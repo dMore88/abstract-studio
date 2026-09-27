@@ -5,16 +5,18 @@
 
 import { phyllotaxisPattern } from './phyllotaxis.js';
 import { branchingTreePattern } from './branching-tree.js';
+import { flowFieldPattern } from './flow-field.js';
 
 class PatternRegistry {
   constructor() {
     this.patterns = new Map();
     this.activePatternId = null;
 
-    // Registrar patrones iniciales
+    // Registrar patrones en un único catálogo accesible
     this.register(phyllotaxisPattern);
     this.register(branchingTreePattern);
-    this.activePatternId = phyllotaxisPattern.id;
+    this.register(flowFieldPattern);
+    this.activePatternId = flowFieldPattern.id;
   }
 
   /**

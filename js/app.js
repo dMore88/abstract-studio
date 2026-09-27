@@ -11,6 +11,7 @@ class App {
     this.canvasContainer = document.getElementById('svg-canvas-container');
     this.patternSelect = document.getElementById('pattern-select');
     this.patternDesc = document.getElementById('pattern-description');
+    this.naturalOriginEl = document.getElementById('natural-origin');
     this.currentSvgString = '';
     this.zoomLevel = 1;
 
@@ -40,6 +41,9 @@ class App {
     const pattern = registry.setActive(patternId);
     this.patternSelect.value = pattern.id;
     this.patternDesc.textContent = pattern.description;
+    if (this.naturalOriginEl) {
+      this.naturalOriginEl.textContent = pattern.naturalOrigin || '🌿 Patrón inspirado en la naturaleza';
+    }
 
     this.uiManager.renderPatternControls(pattern);
     this.renderCurrentPattern(this.uiManager.getValues());
@@ -125,14 +129,25 @@ class App {
       btnMutate.addEventListener('click', () => {
         const pattern = registry.getActive();
         const values = this.uiManager.getValues();
+        let message = '✨ Mutación aplicada';
         
-        // Mutación armónica de ángulo (desviación pequeña alrededor de patrones áureos o resonantes)
-        const angleJitter = (Math.random() - 0.5) * 0.4;
-        values.angle = +(parseFloat(values.angle) + angleJitter).toFixed(3);
+        if (pattern.id === 'phyllotaxis') {
+          const angleJitter = (Math.random() - 0.5) * 0.4;
+          values.angle = +(parseFloat(values.angle) + angleJitter).toFixed(3);
+          message = `✨ Ángulo mutado: ${values.angle}°`;
+        } else if (pattern.id === 'branching-tree') {
+          values.branchAngle = Math.round(parseFloat(values.branchAngle) + (Math.random() - 0.5) * 8);
+          values.asymmetry = Math.round(parseFloat(values.asymmetry) + (Math.random() - 0.5) * 6);
+          message = `✨ Ramas mutadas: ${values.branchAngle}°`;
+        } else if (pattern.id === 'flow-field') {
+          values.curl = +(parseFloat(values.curl) + (Math.random() - 0.5) * 0.5).toFixed(1);
+          values.noiseScale = +(Math.max(0.001, parseFloat(values.noiseScale) + (Math.random() - 0.5) * 0.0015)).toFixed(4);
+          message = `✨ Turbulencia mutada: ${values.curl}x`;
+        }
         
         this.uiManager.applyPreset(values, pattern);
         this.renderCurrentPattern(values);
-        UIManager.showToast(`✨ Mutación aplicada: ${values.angle}°`);
+        UIManager.showToast(message);
       });
     }
 

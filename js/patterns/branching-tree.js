@@ -8,6 +8,7 @@ export const branchingTreePattern = {
   name: 'Ramificaciones Fractales (Árboles)',
   subtitle: 'Sistemas botánicos de ramificación y redes vasculares',
   description: 'Simulación del principio botánico de ramificación fractal (similar a L-Systems y morfología de árboles). Modula el ángulo de apertura, niveles de crecimiento y curvatura orgánica.',
+  naturalOrigin: '🌿 Leyes de bifurcación geométrica en ramas de árboles y redes vasculares.',
 
   presets: [
     { name: 'Roble Majestuoso', values: { depth: 9, branchAngle: 28, lengthRatio: 0.72, leafSize: 4.0, asymmetry: 0, palette: 'forest' } },

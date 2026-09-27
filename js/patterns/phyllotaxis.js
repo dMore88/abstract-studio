@@ -10,6 +10,7 @@ export const phyllotaxisPattern = {
   name: 'Filotaxis (Espirales de Fermat)',
   subtitle: 'Geometría botánica de girasoles, piñas y suculentas',
   description: 'Distribución óptima de empaquetamiento natural en plantas descrita matemáticamente por Vogel usando el ángulo áureo (~137.508°). Pequeñas variaciones angulares producen dramáticas simetrías secundarias.',
+  naturalOrigin: '🌱 Empaquetamiento áureo en inflorescencias de girasol, piñas y suculentas.',
 
   presets: [
     { name: 'Girasol Áureo', values: { angle: 137.508, points: 750, spread: 5.2, dotScale: 3.2, shape: 'circle', palette: 'sunflower', sizeEvolution: 'grow', colorMapping: 'radius' } },
