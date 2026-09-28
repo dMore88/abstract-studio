@@ -1,49 +1,64 @@
 /**
- * Presets de la Suite Creativa: Desde lo Mínimo (Generative Artistry) hasta lo Denso (UJI)
+ * Presets de la Suite Creativa
+ * Desde piezas centrales mínimas hasta fondos de textura densa sangrada
  */
 
 export const PRESETS = [
   {
     id: 'seda_papel_uji',
-    name: 'Seda & Papel Washi (Estilo UJI)',
-    description: 'Textura de miles de líneas con micro-corrugado analógico que emula fibras de papel japonés o seda.',
+    name: 'Seda & Papel Washi (Fondo Sangrado)',
+    description: 'Textura de cientos de elipses con micro-corrugado y respiración de trazos que inundan el lienzo.',
     state: {
       canvas: { aspectRatio: '9:16', paletteId: 'aubergine', bgColor: '#081018' },
       pattern: {
-        archetype: 'spiral_nautilus',
-        copies: 450,
+        shape: 'circle',
+        polygonSides: 4,
+        size: 780, // Sangrado total como fondo
+        centerX: 50,
+        centerY: 50,
+        copies: 380,
         scaleStep: 0.996,
         rotateStep: 0.45,
-        moveX: 0.25,
-        moveY: -0.35,
+        moveX: 0.2,
+        moveY: -0.3,
         anchor: 'bottom',
-        jitter: 2.6, // Textura de micro-corrugado
+        jitter: 2.8,
+        skipChance: 15,
+        lineSwappiness: 25,
+        waviness: 0,
         strokeWidth: 0.7,
         opacity: 0.22,
         color: '#f472b6'
       },
-      brush: { mode: 'smooth', radius: 90, strength: 40 },
+      brush: { mode: 'smooth', radius: 95, strength: 45 },
       differenceLayers: []
     },
     deformations: [
-      { x: 270, y: 480, radius: 120, strength: 45, mode: 'smooth' }
+      { x: 270, y: 480, radius: 120, strength: 50, mode: 'smooth' }
     ]
   },
   {
     id: 'espiral_nautilus',
-    name: 'Espiral Nautilus (Illustrator Transform)',
-    description: 'Elipse base transformada acumulativamente con escala del 95% y giro continuo de 8.5°.',
+    name: 'Espiral Nautilus (Pieza Central)',
+    description: 'Elipse base transformada acumulativamente con escala del 95.5% y giro continuo de 8.5°.',
     state: {
       canvas: { aspectRatio: '1:1', paletteId: 'terracotta', bgColor: '#180a22' },
       pattern: {
-        archetype: 'spiral_nautilus',
-        copies: 48,
+        shape: 'circle',
+        polygonSides: 4,
+        size: 320, // Objeto central contenido
+        centerX: 50,
+        centerY: 50,
+        copies: 46,
         scaleStep: 0.955,
         rotateStep: 8.5,
         moveX: 1.5,
         moveY: -3.5,
         anchor: 'bottom',
         jitter: 0,
+        skipChance: 0,
+        lineSwappiness: 0,
+        waviness: 0,
         strokeWidth: 1.2,
         opacity: 0.85,
         color: '#ea580c'
@@ -55,12 +70,16 @@ export const PRESETS = [
   },
   {
     id: 'roseta_guilloche',
-    name: 'Roseta Guilloché (Book of Shapes)',
-    description: 'Pétalos rotados radialmente a 360° generando patrones de interferencia y mandalas.',
+    name: 'Roseta Guilloché (Pieza Central)',
+    description: 'Pétalos rotados radialmente a 360° generando mandalas e interferencias de Moiré.',
     state: {
       canvas: { aspectRatio: '1:1', paletteId: 'petrol', bgColor: '#060f17' },
       pattern: {
-        archetype: 'radial_rosette',
+        shape: 'petal',
+        polygonSides: 4,
+        size: 280, // Objeto central
+        centerX: 50,
+        centerY: 50,
         copies: 36,
         scaleStep: 1.0,
         rotateStep: 10,
@@ -68,8 +87,11 @@ export const PRESETS = [
         moveY: 0,
         anchor: 'center',
         jitter: 0,
+        skipChance: 0,
+        lineSwappiness: 0,
+        waviness: 0,
         strokeWidth: 1.2,
-        opacity: 0.8,
+        opacity: 0.85,
         color: '#38bdf8'
       },
       brush: { mode: 'twist', radius: 80, strength: 45 },
@@ -80,16 +102,27 @@ export const PRESETS = [
   {
     id: 'cordillera_petroleo',
     name: 'Cordillera de Picos (Tu pieza 2)',
-    description: 'Trama de líneas horizontales con picos afilados esculpidos a mano sobre azul petróleo.',
+    description: 'Líneas paralelas de lado a lado con picos afilados esculpidos a mano sobre azul petróleo.',
     state: {
       canvas: { aspectRatio: '9:16', paletteId: 'petrol', bgColor: '#082c3d' },
       pattern: {
-        archetype: 'lines',
-        density: 56,
-        strokeWidth: 1.2,
-        angle: 0,
-        baseWaviness: 2,
+        shape: 'line',
+        polygonSides: 4,
+        size: 540, // Sangrado horizontal
+        centerX: 50,
+        centerY: 50,
+        copies: 54,
+        scaleStep: 1.0,
+        rotateStep: 0,
+        moveX: 0,
+        moveY: 15,
+        anchor: 'center',
         jitter: 0,
+        skipChance: 0,
+        lineSwappiness: 0,
+        waviness: 2,
+        strokeWidth: 1.2,
+        opacity: 0.85,
         color: '#a5f3fc'
       },
       brush: { mode: 'peak', radius: 65, strength: 65 },
@@ -108,16 +141,27 @@ export const PRESETS = [
   {
     id: 'zen_carmesi',
     name: 'Paisaje Zen con Sol (Tu pieza 3)',
-    description: 'Colinas suaves con astro carmesí colocado en la capa de fondo detrás de las líneas.',
+    description: 'Ondas suaves con astro carmesí colocado en la capa de fondo detrás de las líneas.',
     state: {
       canvas: { aspectRatio: '9:16', paletteId: 'aubergine', bgColor: '#140822' },
       pattern: {
-        archetype: 'lines',
-        density: 48,
-        strokeWidth: 1.2,
-        angle: 0,
-        baseWaviness: 3,
+        shape: 'line',
+        polygonSides: 4,
+        size: 540,
+        centerX: 50,
+        centerY: 50,
+        copies: 46,
+        scaleStep: 1.0,
+        rotateStep: 0,
+        moveX: 0,
+        moveY: 16,
+        anchor: 'center',
         jitter: 0,
+        skipChance: 0,
+        lineSwappiness: 0,
+        waviness: 3,
+        strokeWidth: 1.2,
+        opacity: 0.85,
         color: '#818cf8'
       },
       brush: { mode: 'smooth', radius: 85, strength: 55 },
@@ -146,20 +190,26 @@ export const PRESETS = [
   },
   {
     id: 'minimal_bauhaus',
-    name: 'Minimalismo Afiche (Generative Artistry)',
-    description: '12 iteraciones limpias sin textura de ruido, tipografía en contraste y geometría pura.',
+    name: 'Afiche Minimalista (Generative Artistry)',
+    description: '14 iteraciones limpias sin textura de ruido, tipografía en contraste y geometría pura.',
     state: {
       canvas: { aspectRatio: '1:1', paletteId: 'bauhaus', bgColor: '#18181b' },
       pattern: {
-        archetype: 'concentric_tunnel',
+        shape: 'polygon',
+        polygonSides: 4,
+        size: 340,
+        centerX: 50,
+        centerY: 50,
         copies: 14,
         scaleStep: 0.88,
         rotateStep: 4,
         moveX: 0,
         moveY: 0,
         anchor: 'center',
-        polygonSides: 4,
         jitter: 0,
+        skipChance: 0,
+        lineSwappiness: 0,
+        waviness: 0,
         strokeWidth: 2.2,
         opacity: 1.0,
         color: '#fafafa'
@@ -168,7 +218,7 @@ export const PRESETS = [
       differenceLayers: [
         {
           id: 'diff-1',
-          name: 'Letra Bauhaus',
+          name: 'Glifo Bauhaus',
           active: true,
           type: 'text',
           text: '01',

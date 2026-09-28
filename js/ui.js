@@ -1,7 +1,11 @@
 /**
  * Gestor de Interfaz de Usuario para Abstract Studio
- * Soporta arquetipos geométricos, transformación acumulativa estilo Illustrator
- * y slider de textura de papel / micro-corrugado estilo UJI.
+ * Arquitectura modular y bien pensada:
+ * 1. Figura Base (Semilla y Tamaño: pieza central o sangrado de fondo)
+ * 2. Transformación Acumulativa (Estilo Illustrator)
+ * 3. Textura & Materia (Jitter, Skip Chance, Line Swappiness estilo UJI)
+ * 4. Esculpido Manual Directo (Cursor)
+ * 5. Capas de Diferencia (Máx 3)
  */
 
 import { ASPECT_RATIOS } from './engine.js';
@@ -20,19 +24,19 @@ export class UIManager {
     if (!this.container) return;
     this.container.innerHTML = '';
 
-    // 1. Presets Rápidos
+    // Galería de Presets Iniciales
     this.renderPresetsSection(state, engine);
 
-    // 2. Lienzo & Formato (Aspect Ratio y Paletas)
+    // 0. Formato del Lienzo
     this.renderCanvasSection(state);
 
-    // 3. Capa 1: Arquetipo & Transformación Acumulativa
-    this.renderPatternSection(state);
+    // 1. Figura Base & 2. Transformación & 3. Textura
+    this.renderCoreSection(state);
 
-    // 4. Herramientas de Esculpido Manual
+    // 4. Esculpido Directo
     this.renderSculptSection(state, engine);
 
-    // 5. Capas de Diferencia (Máx 3)
+    // 5. Capas de Diferencia
     this.renderDifferenceSection(state);
   }
 
@@ -40,7 +44,7 @@ export class UIManager {
     const section = document.createElement('div');
     section.className = 'control-group';
     section.innerHTML = `
-      <span class="section-label">Galería de Arquetipos / Presets</span>
+      <span class="section-label">Galería de Composiciones</span>
       <div class="presets-wrap" id="presets-list"></div>
     `;
     const list = section.querySelector('#presets-list');
@@ -59,7 +63,7 @@ export class UIManager {
 
         this.render(state, engine);
         this.notifyChange();
-        UIManager.showToast(`✨ Arquetipo cargado: ${preset.name}`);
+        UIManager.showToast(`✨ ${preset.name}`);
       });
       list.appendChild(chip);
     });
@@ -71,13 +75,13 @@ export class UIManager {
     const section = document.createElement('div');
     section.className = 'control-section';
     section.innerHTML = `
-      <div class="section-title">📐 1. Lienzo & Proporción</div>
+      <div class="section-title">📐 0. Lienzo & Proporción</div>
       <div class="control-group">
         <label class="control-label">Aspect Ratio</label>
         <div class="aspect-grid" id="aspect-ratio-buttons"></div>
       </div>
       <div class="control-group">
-        <label class="control-label">Paleta Cromática</label>
+        <label class="control-label">Paleta de Color</label>
         <div class="palette-grid" id="palette-buttons"></div>
       </div>
     `;
@@ -131,135 +135,156 @@ export class UIManager {
     this.container.appendChild(section);
   }
 
-  renderPatternSection(state) {
-    const isTransformMode = ['spiral_nautilus', 'radial_rosette', 'concentric_tunnel'].includes(state.pattern.archetype);
+  renderCoreSection(state) {
+    const p = state.pattern;
 
     const section = document.createElement('div');
     section.className = 'control-section';
     section.innerHTML = `
-      <div class="section-title">〰️ 2. Capa 1: Arquetipo & Transformación</div>
+      <div class="section-title">🔷 1. Figura Base (La Semilla)</div>
       
       <div class="control-group">
-        <label class="control-label">Arquetipo Base</label>
-        <div class="segmented-control" id="archetype-control">
-          <button type="button" class="segmented-btn ${state.pattern.archetype === 'lines' ? 'active' : ''}" data-archetype="lines">Líneas</button>
-          <button type="button" class="segmented-btn ${state.pattern.archetype === 'spiral_nautilus' ? 'active' : ''}" data-archetype="spiral_nautilus">Nautilus</button>
-          <button type="button" class="segmented-btn ${state.pattern.archetype === 'radial_rosette' ? 'active' : ''}" data-archetype="radial_rosette">Roseta</button>
-          <button type="button" class="segmented-btn ${state.pattern.archetype === 'concentric_tunnel' ? 'active' : ''}" data-archetype="concentric_tunnel">Vórtice</button>
-          <button type="button" class="segmented-btn ${state.pattern.archetype === 'grid' ? 'active' : ''}" data-archetype="grid">Rejilla</button>
+        <label class="control-label">Geometría Semilla</label>
+        <div class="segmented-control" id="shape-control">
+          <button type="button" class="segmented-btn ${p.shape === 'circle' ? 'active' : ''}" data-shape="circle">Círculo</button>
+          <button type="button" class="segmented-btn ${p.shape === 'polygon' ? 'active' : ''}" data-shape="polygon">Polígono</button>
+          <button type="button" class="segmented-btn ${p.shape === 'line' ? 'active' : ''}" data-shape="line">Línea</button>
+          <button type="button" class="segmented-btn ${p.shape === 'petal' ? 'active' : ''}" data-shape="petal">Pétalo</button>
         </div>
       </div>
 
-      <!-- Controles Específicos de Transformación Acumulativa (Estilo Illustrator) -->
-      <div id="transform-panel" style="display: ${isTransformMode ? 'flex' : 'none'}; flex-direction: column; gap: 0.8rem;">
-        <div class="control-group">
-          <div class="control-header">
-            <span class="control-label">Copias de Repetición</span>
-            <span class="control-value" id="val-copies">${state.pattern.copies || 50}</span>
-          </div>
-          <input type="range" id="input-copies" min="5" max="800" step="5" value="${state.pattern.copies || 50}">
-        </div>
-
-        <div class="control-group">
-          <div class="control-header">
-            <span class="control-label">Escala por Copia (%)</span>
-            <span class="control-value" id="val-scaleStep">${Math.round((state.pattern.scaleStep || 0.96) * 100)}%</span>
-          </div>
-          <input type="range" id="input-scaleStep" min="88" max="104" step="0.2" value="${((state.pattern.scaleStep || 0.96) * 100).toFixed(1)}">
-        </div>
-
-        <div class="control-group">
-          <div class="control-header">
-            <span class="control-label">Giro Angular por Copia</span>
-            <span class="control-value" id="val-rotateStep">${state.pattern.rotateStep || 8}°</span>
-          </div>
-          <input type="range" id="input-rotateStep" min="0" max="30" step="0.5" value="${state.pattern.rotateStep || 8}">
-        </div>
-
-        <div class="dual-slider-row">
-          <div class="control-group flex-1">
-            <span class="control-label-sm">Mover X: <span id="val-moveX">${state.pattern.moveX || 0}px</span></span>
-            <input type="range" id="input-moveX" min="-8" max="8" step="0.5" value="${state.pattern.moveX || 0}">
-          </div>
-          <div class="control-group flex-1">
-            <span class="control-label-sm">Mover Y: <span id="val-moveY">${state.pattern.moveY || 0}px</span></span>
-            <input type="range" id="input-moveY" min="-8" max="8" step="0.5" value="${state.pattern.moveY || 0}">
-          </div>
-        </div>
-
-        <div class="control-group">
-          <label class="control-label-sm">Eje de Rotación</label>
-          <div class="segmented-control" id="anchor-control">
-            <button type="button" class="segmented-btn ${state.pattern.anchor === 'center' ? 'active' : ''}" data-anchor="center">Centro</button>
-            <button type="button" class="segmented-btn ${state.pattern.anchor === 'bottom' ? 'active' : ''}" data-anchor="bottom">Base Excéntrica</button>
-            <button type="button" class="segmented-btn ${state.pattern.anchor === 'side' ? 'active' : ''}" data-anchor="side">Lateral</button>
-          </div>
+      <div id="polygon-sides-group" class="control-group" style="display: ${p.shape === 'polygon' ? 'flex' : 'none'};">
+        <label class="control-label-sm">Lados del Polígono</label>
+        <div class="segmented-control" id="sides-control">
+          <button type="button" class="segmented-btn ${p.polygonSides === 3 ? 'active' : ''}" data-sides="3">Triángulo</button>
+          <button type="button" class="segmented-btn ${p.polygonSides === 4 ? 'active' : ''}" data-sides="4">Rombo</button>
+          <button type="button" class="segmented-btn ${p.polygonSides === 5 ? 'active' : ''}" data-sides="5">Pentágono</button>
+          <button type="button" class="segmented-btn ${p.polygonSides === 6 ? 'active' : ''}" data-sides="6">Hexágono</button>
+          <button type="button" class="segmented-btn ${p.polygonSides === 8 ? 'active' : ''}" data-sides="8">Octágono</button>
         </div>
       </div>
 
-      <!-- Controles para Líneas Paralelas -->
-      <div id="lines-panel" style="display: ${!isTransformMode ? 'flex' : 'none'}; flex-direction: column; gap: 0.8rem;">
-        <div class="control-group">
-          <div class="control-header">
-            <span class="control-label">Densidad de Líneas</span>
-            <span class="control-value" id="val-density">${state.pattern.density || 45}</span>
-          </div>
-          <input type="range" id="input-density" min="15" max="85" step="1" value="${state.pattern.density || 45}">
-        </div>
-
-        <div class="control-group">
-          <div class="control-header">
-            <span class="control-label">Ángulo General</span>
-            <span class="control-value" id="val-angle">${state.pattern.angle || 0}°</span>
-          </div>
-          <input type="range" id="input-angle" min="0" max="180" step="1" value="${state.pattern.angle || 0}">
-        </div>
-
-        <div class="control-group">
-          <div class="control-header">
-            <span class="control-label">Ondulación Base</span>
-            <span class="control-value" id="val-baseWaviness">${state.pattern.baseWaviness || 0}px</span>
-          </div>
-          <input type="range" id="input-baseWaviness" min="0" max="20" step="1" value="${state.pattern.baseWaviness || 0}">
-        </div>
-      </div>
-
-      <!-- CONTROLES ARTÍSTICOS UNIVERSALES (Textura UJI + Grosor + Opacidad) -->
       <div class="control-group">
         <div class="control-header">
-          <span class="control-label" style="color: #38bdf8;">🌾 Textura de Papel (Micro-corrugado)</span>
-          <span class="control-value" id="val-jitter">${(state.pattern.jitter || 0).toFixed(1)}px</span>
+          <span class="control-label">Tamaño Inicial (Radio / Sangrado)</span>
+          <span class="control-value" id="val-size">${p.size}px</span>
         </div>
-        <input type="range" id="input-jitter" min="0" max="6" step="0.2" value="${state.pattern.jitter || 0}">
+        <input type="range" id="input-size" min="30" max="1100" step="10" value="${p.size}" title="Hazlo pequeño para objeto central, o grande para sangrado total como fondo">
+        <span class="sub-hint">Pequeño = Pieza central focal | Grande (>600px) = Sangrado como fondo</span>
+      </div>
+
+      <div class="section-title" style="margin-top: 0.8rem;">🔄 2. Transformación Acumulativa (Illustrator)</div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">Copias de Repetición</span>
+          <span class="control-value" id="val-copies">${p.copies}</span>
+        </div>
+        <input type="range" id="input-copies" min="5" max="800" step="5" value="${p.copies}">
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">Escala por Copia (%)</span>
+          <span class="control-value" id="val-scaleStep">${Math.round(p.scaleStep * 100)}%</span>
+        </div>
+        <input type="range" id="input-scaleStep" min="88" max="108" step="0.2" value="${(p.scaleStep * 100).toFixed(1)}">
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">Giro por Copia</span>
+          <span class="control-value" id="val-rotateStep">${p.rotateStep}°</span>
+        </div>
+        <input type="range" id="input-rotateStep" min="-25" max="25" step="0.2" value="${p.rotateStep}">
       </div>
 
       <div class="dual-slider-row">
         <div class="control-group flex-1">
-          <div class="control-header">
-            <span class="control-label-sm">Grosor</span>
-            <span class="control-value-sm" id="val-strokeWidth">${state.pattern.strokeWidth || 1}px</span>
-          </div>
-          <input type="range" id="input-strokeWidth" min="0.2" max="4.0" step="0.1" value="${state.pattern.strokeWidth || 1}">
+          <span class="control-label-sm">Mover X: <span id="val-moveX">${p.moveX}px</span></span>
+          <input type="range" id="input-moveX" min="-12" max="12" step="0.5" value="${p.moveX}">
         </div>
-
         <div class="control-group flex-1">
-          <div class="control-header">
-            <span class="control-label-sm">Opacidad</span>
-            <span class="control-value-sm" id="val-opacity">${Math.round((state.pattern.opacity || 0.8) * 100)}%</span>
-          </div>
-          <input type="range" id="input-opacity" min="0.05" max="1.0" step="0.05" value="${state.pattern.opacity || 0.8}">
+          <span class="control-label-sm">Mover Y: <span id="val-moveY">${p.moveY}px</span></span>
+          <input type="range" id="input-moveY" min="-12" max="12" step="0.5" value="${p.moveY}">
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label-sm">Punto de Ancla (Eje)</label>
+        <div class="segmented-control" id="anchor-control">
+          <button type="button" class="segmented-btn ${p.anchor === 'center' ? 'active' : ''}" data-anchor="center">Centro</button>
+          <button type="button" class="segmented-btn ${p.anchor === 'bottom' ? 'active' : ''}" data-anchor="bottom">Base Excéntrica</button>
+          <button type="button" class="segmented-btn ${p.anchor === 'side' ? 'active' : ''}" data-anchor="side">Lateral</button>
+        </div>
+      </div>
+
+      <div class="section-title" style="margin-top: 0.8rem;">🌾 3. Textura & Materia (UJI)</div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label" style="color: #38bdf8;">Micro-corrugado (Jitter / Fibra)</span>
+          <span class="control-value" id="val-jitter">${(p.jitter || 0).toFixed(1)}px</span>
+        </div>
+        <input type="range" id="input-jitter" min="0" max="6" step="0.2" value="${p.jitter || 0}">
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">Salto de Líneas (Respiración / Skip)</span>
+          <span class="control-value" id="val-skipChance">${p.skipChance || 0}%</span>
+        </div>
+        <input type="range" id="input-skipChance" min="0" max="60" step="5" value="${p.skipChance || 0}">
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">Cruce de Hebras (Deshilachado)</span>
+          <span class="control-value" id="val-lineSwappiness">${p.lineSwappiness || 0}%</span>
+        </div>
+        <input type="range" id="input-lineSwappiness" min="0" max="60" step="5" value="${p.lineSwappiness || 0}">
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">Ondulación Perimetral</span>
+          <span class="control-value" id="val-waviness">${p.waviness || 0}px</span>
+        </div>
+        <input type="range" id="input-waviness" min="0" max="25" step="1" value="${p.waviness || 0}">
+      </div>
+
+      <div class="dual-slider-row">
+        <div class="control-group flex-1">
+          <span class="control-label-sm">Grosor: <span id="val-strokeWidth">${p.strokeWidth}px</span></span>
+          <input type="range" id="input-strokeWidth" min="0.2" max="4.0" step="0.1" value="${p.strokeWidth}">
+        </div>
+        <div class="control-group flex-1">
+          <span class="control-label-sm">Opacidad: <span id="val-opacity">${Math.round(p.opacity * 100)}%</span></span>
+          <input type="range" id="input-opacity" min="0.05" max="1.0" step="0.05" value="${p.opacity}">
         </div>
       </div>
     `;
 
-    // Selector de arquetipo
-    const archBtns = section.querySelectorAll('#archetype-control .segmented-btn');
-    archBtns.forEach(btn => {
+    // Forma
+    const shapeBtns = section.querySelectorAll('#shape-control .segmented-btn');
+    const polyGroup = section.querySelector('#polygon-sides-group');
+    shapeBtns.forEach(btn => {
       btn.addEventListener('click', () => {
-        archBtns.forEach(b => b.classList.remove('active'));
+        shapeBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        state.pattern.archetype = btn.dataset.archetype;
-        this.render(state, null);
+        p.shape = btn.dataset.shape;
+        polyGroup.style.display = p.shape === 'polygon' ? 'flex' : 'none';
+        this.notifyChange();
+      });
+    });
+
+    // Lados de polígono
+    const sidesBtns = section.querySelectorAll('#sides-control .segmented-btn');
+    sidesBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        sidesBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        p.polygonSides = parseInt(btn.dataset.sides, 10);
         this.notifyChange();
       });
     });
@@ -270,27 +295,24 @@ export class UIManager {
       btn.addEventListener('click', () => {
         anchorBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        state.pattern.anchor = btn.dataset.anchor;
+        p.anchor = btn.dataset.anchor;
         this.notifyChange();
       });
     });
 
-    // Sliders de Transformación
-    this.bindSlider(section, 'copies', state.pattern, '', (v) => v);
-    this.bindSlider(section, 'scaleStep', state.pattern, '%', (v) => v / 100);
-    this.bindSlider(section, 'rotateStep', state.pattern, '°', (v) => v);
-    this.bindSlider(section, 'moveX', state.pattern, 'px', (v) => v);
-    this.bindSlider(section, 'moveY', state.pattern, 'px', (v) => v);
-
-    // Sliders de Líneas
-    this.bindSlider(section, 'density', state.pattern, '', (v) => v);
-    this.bindSlider(section, 'angle', state.pattern, '°', (v) => v);
-    this.bindSlider(section, 'baseWaviness', state.pattern, 'px', (v) => v);
-
-    // Sliders Universales
-    this.bindSlider(section, 'jitter', state.pattern, 'px', (v) => v);
-    this.bindSlider(section, 'strokeWidth', state.pattern, 'px', (v) => v);
-    this.bindSlider(section, 'opacity', state.pattern, '', (v) => v);
+    // Sliders
+    this.bindSlider(section, 'size', p, 'px', (v) => v);
+    this.bindSlider(section, 'copies', p, '', (v) => v);
+    this.bindSlider(section, 'scaleStep', p, '%', (v) => v / 100);
+    this.bindSlider(section, 'rotateStep', p, '°', (v) => v);
+    this.bindSlider(section, 'moveX', p, 'px', (v) => v);
+    this.bindSlider(section, 'moveY', p, 'px', (v) => v);
+    this.bindSlider(section, 'jitter', p, 'px', (v) => v);
+    this.bindSlider(section, 'skipChance', p, '%', (v) => v);
+    this.bindSlider(section, 'lineSwappiness', p, '%', (v) => v);
+    this.bindSlider(section, 'waviness', p, 'px', (v) => v);
+    this.bindSlider(section, 'strokeWidth', p, 'px', (v) => v);
+    this.bindSlider(section, 'opacity', p, '', (v) => v);
 
     this.container.appendChild(section);
   }
@@ -299,7 +321,7 @@ export class UIManager {
     const section = document.createElement('div');
     section.className = 'control-section';
     section.innerHTML = `
-      <div class="section-title">✍️ 3. Esculpido Directo (Cursor)</div>
+      <div class="section-title">✍️ 4. Esculpido Directo (Cursor)</div>
       
       <div class="control-group">
         <label class="control-label">Herramienta de Pincel</label>
@@ -364,7 +386,7 @@ export class UIManager {
     section.className = 'control-section';
     section.innerHTML = `
       <div class="section-title-between">
-        <span class="section-title">✨ 4. Capas de Diferencia (${count}/${maxLayers})</span>
+        <span class="section-title">✨ 5. Capas de Diferencia (${count}/${maxLayers})</span>
         ${count < maxLayers ? '<button type="button" id="btn-add-diff" class="btn btn-sm btn-primary">+ Añadir</button>' : ''}
       </div>
       <div id="diff-layers-container" class="diff-layers-list"></div>
