@@ -1,71 +1,54 @@
 /**
- * Orquestador Principal de Nature Gen Art
+ * Orquestador Principal de Abstract Studio (Arte Abstracto por Capas)
  */
 
-import { registry } from './patterns/registry.js';
+import { AbstractEngine } from './engine.js';
 import { UIManager } from './ui.js';
 import { Exporter } from './exporter.js';
+import { PRESETS } from './presets.js';
 
 class App {
   constructor() {
     this.canvasContainer = document.getElementById('svg-canvas-container');
-    this.patternSelect = document.getElementById('pattern-select');
-    this.patternDesc = document.getElementById('pattern-description');
-    this.naturalOriginEl = document.getElementById('natural-origin');
-    this.canvasHintEl = document.getElementById('canvas-hint');
     this.currentSvgString = '';
     this.zoomLevel = 1;
     this.isSculpting = false;
     this.lastSculptPos = null;
 
+    this.engine = new AbstractEngine();
+
+    // Estado inicial cargado desde el primer preset (Cordillera de Picos)
+    const initialPreset = PRESETS[0];
+    this.state = JSON.parse(JSON.stringify(initialPreset.state));
+    this.engine.setDeformations(initialPreset.deformations || []);
+
     this.initUI();
     this.setupEvents();
-    this.loadPattern(registry.getActive().id);
+    this.render();
   }
 
   initUI() {
-    // Poblar selector de patrones
-    this.patternSelect.innerHTML = '';
-    registry.getAll().forEach(pattern => {
-      const option = document.createElement('option');
-      option.value = pattern.id;
-      option.textContent = pattern.name;
-      this.patternSelect.appendChild(option);
-    });
-
     this.uiManager = new UIManager({
       containerId: 'dynamic-controls',
-      onParamChange: (values) => this.renderCurrentPattern(values),
-      onPresetSelect: (values) => this.renderCurrentPattern(values)
-    });
-  }
-
-  loadPattern(patternId) {
-    const pattern = registry.setActive(patternId);
-    this.patternSelect.value = pattern.id;
-    this.patternDesc.textContent = pattern.description;
-    if (this.naturalOriginEl) {
-      this.naturalOriginEl.textContent = pattern.naturalOrigin || '🌿 Patrón inspirado en la naturaleza';
-    }
-
-    if (this.canvasHintEl) {
-      if (pattern.id === 'sculpt-terrain') {
-        this.canvasHintEl.classList.remove('hidden');
-      } else {
-        this.canvasHintEl.classList.add('hidden');
+      onStateChange: () => this.render(),
+      onUndo: () => {
+        this.engine.undoDeformation();
+        this.render();
+        UIManager.showToast('↶ Último trazo deshecho');
+      },
+      onClearDeformations: () => {
+        this.engine.clearDeformations();
+        this.render();
+        UIManager.showToast('🗑️ Trama restablecida');
       }
-    }
+    });
 
-    this.uiManager.renderPatternControls(pattern);
-    this.renderCurrentPattern(this.uiManager.getValues());
+    this.uiManager.render(this.state, this.engine);
   }
 
-  renderCurrentPattern(values) {
-    const pattern = registry.getActive();
-    if (!pattern) return;
-
+  render() {
     window.requestAnimationFrame(() => {
-      this.currentSvgString = pattern.generateSVG(values, { width: 800, height: 800 });
+      this.currentSvgString = this.engine.renderSVG(this.state);
       this.canvasContainer.innerHTML = this.currentSvgString;
       this.applyZoom();
     });
@@ -79,24 +62,73 @@ class App {
     }
   }
 
+  getCanvasCoords(e) {
+    const svgEl = this.canvasContainer.querySelector('svg');
+    if (!svgEl) return null;
+    const rect = svgEl.getBoundingClientRect();
+    const bounds = this.engine.getBounds(this.state.canvas.aspectRatio);
+
+    const x = ((e.clientX - rect.left) / rect.width) * bounds.width;
+    const y = ((e.clientY - rect.top) / rect.height) * bounds.height;
+    return { x: Math.round(x), y: Math.round(y) };
+  }
+
   setupEvents() {
-    // Cambio de patrón
-    this.patternSelect.addEventListener('change', (e) => {
-      this.loadPattern(e.target.value);
+    // 1. Esculpido Directo sobre el Lienzo SVG con el ratón
+    this.canvasContainer.addEventListener('pointerdown', (e) => {
+      const coords = this.getCanvasCoords(e);
+      if (!coords) return;
+      this.isSculpting = true;
+      this.lastSculptPos = coords;
+      this.engine.addDeformation(coords.x, coords.y, this.state.brush);
+      this.render();
     });
 
-    // Botón Descargar SVG
+    this.canvasContainer.addEventListener('pointermove', (e) => {
+      const coords = this.getCanvasCoords(e);
+      if (!coords) return;
+
+      this.engine.cursorPreview = {
+        cx: coords.x,
+        cy: coords.y,
+        r: parseFloat(this.state.brush.radius)
+      };
+
+      if (this.isSculpting && this.lastSculptPos) {
+        const dx = coords.x - this.lastSculptPos.x;
+        const dy = coords.y - this.lastSculptPos.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 16) {
+          this.lastSculptPos = coords;
+          this.engine.addDeformation(coords.x, coords.y, this.state.brush);
+        }
+      }
+      this.render();
+    });
+
+    const stopSculpting = () => {
+      this.isSculpting = false;
+    };
+    window.addEventListener('pointerup', stopSculpting);
+    window.addEventListener('pointercancel', stopSculpting);
+
+    this.canvasContainer.addEventListener('pointerleave', () => {
+      this.engine.cursorPreview = null;
+      this.render();
+    });
+
+    // 2. Descargar SVG
     const btnDownload = document.getElementById('btn-download-svg');
     if (btnDownload) {
       btnDownload.addEventListener('click', () => {
-        const pattern = registry.getActive();
-        const dateStr = new Date().toISOString().slice(0, 10);
-        Exporter.downloadSVG(this.currentSvgString, `${pattern.id}-${dateStr}.svg`);
-        UIManager.showToast('✅ Archivo SVG descargado');
+        const ratio = this.state.canvas.aspectRatio.replace(':', 'x');
+        const filename = `abstract-art-${ratio}-${Date.now().toString().slice(-5)}.svg`;
+        Exporter.downloadSVG(this.currentSvgString, filename);
+        UIManager.showToast('✅ Archivo SVG vectorial descargado');
       });
     }
 
-    // Botón Copiar SVG
+    // 3. Copiar SVG
     const btnCopySvg = document.getElementById('btn-copy-svg');
     if (btnCopySvg) {
       btnCopySvg.addEventListener('click', async () => {
@@ -105,7 +137,7 @@ class App {
       });
     }
 
-    // Botón Ver Código / Modal
+    // 4. Modal de Código
     const btnViewCode = document.getElementById('btn-view-code');
     const modalCode = document.getElementById('modal-code');
     const btnCloseModal = document.getElementById('btn-close-modal');
@@ -114,8 +146,7 @@ class App {
 
     if (btnViewCode && modalCode) {
       btnViewCode.addEventListener('click', () => {
-        const pattern = registry.getActive();
-        const code = pattern.toCode(this.uiManager.getValues());
+        const code = this.engine.toCode(this.state);
         codeSnippetEl.textContent = code;
         modalCode.classList.add('active');
       });
@@ -134,96 +165,21 @@ class App {
       });
     }
 
-    // Interacción de esculpido manual con el ratón
-    const getCoords = (e) => {
-      const svgEl = this.canvasContainer.querySelector('svg');
-      if (!svgEl) return null;
-      const rect = svgEl.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 800;
-      const y = ((e.clientY - rect.top) / rect.height) * 800;
-      return { x: Math.round(x), y: Math.round(y) };
-    };
-
-    this.canvasContainer.addEventListener('pointerdown', (e) => {
-      const pattern = registry.getActive();
-      if (pattern.addDeformation) {
-        const coords = getCoords(e);
-        if (!coords) return;
-        this.isSculpting = true;
-        this.lastSculptPos = coords;
-        const values = this.uiManager.getValues();
-        pattern.addDeformation(coords.x, coords.y, values);
-        this.renderCurrentPattern(values);
-      }
-    });
-
-    this.canvasContainer.addEventListener('pointermove', (e) => {
-      const pattern = registry.getActive();
-      if (pattern.addDeformation) {
-        const coords = getCoords(e);
-        if (!coords) return;
-        const values = this.uiManager.getValues();
-        pattern.cursorPreview = { cx: coords.x, cy: coords.y, r: parseFloat(values.brushRadius) };
-
-        if (this.isSculpting && this.lastSculptPos) {
-          const dx = coords.x - this.lastSculptPos.x;
-          const dy = coords.y - this.lastSculptPos.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist > 18) {
-            this.lastSculptPos = coords;
-            pattern.addDeformation(coords.x, coords.y, values);
-          }
-        }
-        this.renderCurrentPattern(values);
-      }
-    });
-
-    const stopSculpting = () => {
-      this.isSculpting = false;
-    };
-    window.addEventListener('pointerup', stopSculpting);
-    window.addEventListener('pointercancel', stopSculpting);
-
-    this.canvasContainer.addEventListener('pointerleave', () => {
-      const pattern = registry.getActive();
-      if (pattern.cursorPreview) {
-        pattern.cursorPreview = null;
-        this.renderCurrentPattern(this.uiManager.getValues());
-      }
-    });
-
-    // Botón Mutar / Aleatorizar sutilmente
+    // 5. Botón Mutar
     const btnMutate = document.getElementById('btn-mutate');
     if (btnMutate) {
       btnMutate.addEventListener('click', () => {
-        const pattern = registry.getActive();
-        const values = this.uiManager.getValues();
-        let message = '✨ Mutación aplicada';
-        
-        if (pattern.id === 'phyllotaxis') {
-          const angleJitter = (Math.random() - 0.5) * 0.4;
-          values.angle = +(parseFloat(values.angle) + angleJitter).toFixed(3);
-          message = `✨ Ángulo mutado: ${values.angle}°`;
-        } else if (pattern.id === 'branching-tree') {
-          values.branchAngle = Math.round(parseFloat(values.branchAngle) + (Math.random() - 0.5) * 8);
-          values.asymmetry = Math.round(parseFloat(values.asymmetry) + (Math.random() - 0.5) * 6);
-          message = `✨ Ramas mutadas: ${values.branchAngle}°`;
-        } else if (pattern.id === 'flow-field') {
-          values.curl = +(parseFloat(values.curl) + (Math.random() - 0.5) * 0.5).toFixed(1);
-          values.noiseScale = +(Math.max(0.001, parseFloat(values.noiseScale) + (Math.random() - 0.5) * 0.0015)).toFixed(4);
-          message = `✨ Turbulencia mutada: ${values.curl}x`;
-        } else if (pattern.id === 'sculpt-terrain') {
-          values.baseWaviness = Math.round(Math.random() * 8);
-          message = `✨ Ondulación base mutada: ${values.baseWaviness}px`;
+        this.state.pattern.baseWaviness = Math.round(Math.random() * 8);
+        if (this.state.pattern.type === 'lines') {
+          this.state.pattern.angle = (this.state.pattern.angle + (Math.random() > 0.5 ? 5 : -5) + 180) % 180;
         }
-        
-        this.uiManager.applyPreset(values, pattern);
-        this.renderCurrentPattern(values);
-        UIManager.showToast(message);
+        this.render();
+        this.uiManager.render(this.state, this.engine);
+        UIManager.showToast('✨ Mutación armónica aplicada');
       });
     }
 
-    // Zoom Controls
+    // 6. Controles de Zoom
     const btnZoomIn = document.getElementById('btn-zoom-in');
     const btnZoomOut = document.getElementById('btn-zoom-out');
     const btnZoomReset = document.getElementById('btn-zoom-reset');
@@ -249,7 +205,6 @@ class App {
   }
 }
 
-// Inicializar al cargar el DOM
 window.addEventListener('DOMContentLoaded', () => {
   new App();
 });

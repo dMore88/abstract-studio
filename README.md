@@ -1,6 +1,6 @@
-# Nature Gen Art 🌿✨
+# Abstract Studio 📐✨
 
-Una aplicación web de **arte generativo** enfocada en la exploración visual de patrones inspirados en la naturaleza, con controles interactivos para modular parámetros en tiempo real y opciones de exportación en SVG y código.
+Una aplicación web de **arte abstracto paramétrico y diseño generativo por capas**, diseñada para crear composiciones geométricas vectoriales combinando tramas matemáticas, esculpido manual directo con el cursor y elementos de contraste o tipografía.
 
 > 🚀 **Demo en vivo (GitHub Pages)**:  
 > **[https://dmore88.github.io/nature-gen-art/](https://dmore88.github.io/nature-gen-art/)**
@@ -9,57 +9,56 @@ Una aplicación web de **arte generativo** enfocada en la exploración visual de
 
 ## 🎯 Propósito del Proyecto
 
-El objetivo principal es ofrecer un espacio de **exploración visual interactiva** donde las matemáticas y los algoritmos que dan forma al mundo natural se conviertan en lienzos dinámicos vectoriales.
+El objetivo es ofrecer un estudio de **composición gráfica abstracta y exploración visual** que cierre la brecha entre la precisión del código generativo y la intuición del dibujo a mano alzada. 
 
-### Pilares Clave
-
-1. **Inspiración Natural**:
-   Algoritmos y modelos basados en fenómenos biológicos, botánicos, geológicos y físicos (morfogénesis, crecimiento, dinámica de fluidos y ramificaciones).
-2. **Exploración Paramétrica en Tiempo Real**:
-   Controles interactivos e intuitivos (sliders, selectores morfológicos, paletas botánicas armónicas, mutación armónica) que permiten descubrir variantes estéticas de cada patrón.
-3. **Exportación Versátil**:
-   - **Vectorial (SVG)**: Ideal para ploteo de plumillas (pen plotters como Axidraw), corte láser, diseño gráfico o impresión en alta resolución sin pérdida de calidad.
-   - **Código**: Exportación de fragmentos de JavaScript limpios y autónomos para integrar o estudiar el algoritmo.
-   - Copiar al portapapeles o descargar directamente en `.svg`.
+En lugar de limitarse a generar formas cerradas, la herramienta funciona como un instrumento de diseño donde el algoritmo genera la estructura base y tú esculpes, deformas y compones directamente sobre el lienzo.
 
 ---
 
-## 🧩 Patrones Implementados y en Desarrollo
+## 🏗️ Sistema de Composición por Capas
 
-- [x] **Trama Esculpible (Esculpido Manual con Cursor)**: Trama matemática de líneas horizontales base que puedes deformar directamente con el ratón para esculpir picos afilados (estilo cordillera), colinas suaves o valles, con presets inspirados en composiciones topográficas y sol/luna celeste.
-- [x] **Campos de Flujo Orgánico (Viento y Corrientes)**: Dinámica de fluidos y estelas vectoriales continuas generadas por ruido de gradiente, modelando corrientes marinas, dunas del Sahara y auroras boreales.
-- [x] **Filotaxis y Espirales de Fermat**: Disposición de semillas de girasol, piñas y suculentas basada en la fórmula polar de Vogel y el ángulo áureo (~137.508°), con variación morfológica de pétalos, círculos y diamantes.
-- [x] **Ramificaciones Fractales (Árboles Botánicos)**: Sistemas de bifurcación orgánica recursiva (L-Systems) con control de profundidad, apertura angular, tasa de reducción de rama, follaje y fototropismo/viento.
-- [ ] **Reacción-Difusión (Patrones de Turing)**: Simulación morfogénica similar a la pigmentación de pieles de animales (manchas de leopardo, rayas de pez cebra).
-- [ ] **Diagramas de Voronoi y Teselaciones**: Estructuras celulares parecidas a panales de abejas o alas de libélula.
-- [ ] **Atractores Extraños y Ondas**: Patrones de interferencia y resonancia armónica.
+La arquitectura visual está organizada en 3 capas de composición armónica:
+
+### 1. Capa 0: Lienzo, Formato y Color
+- **Control de Aspect Ratio**:
+  - `1:1` (Cuadrado / Portadas)
+  - `9:16` (Vertical / Stories / Carteles)
+  - `16:9` (Panorámico / Fondos de pantalla)
+  - `4:5` (Retrato clásico / Instagram)
+  - `4:3` (Editorial estándar)
+- **Paletas cromáticas seleccionadas**: *Petróleo & Cian, Medianoche & Carmesí, Ciruela & Terracota, Carbón & Tiza, Abismo Esmeralda, Bauhaus Primario*.
+
+### 2. Capa 1: Trama de Repetición y Esculpido Directo
+- **Geometrías de repetición**:
+  - **Líneas paralelas**: con rotación continua de ángulo (0° a 180°), densidad y grosor de trazo.
+  - **Polígonos concéntricos**: conos y prismas apilados (triángulos, rombos, hexágonos, círculos).
+  - **Rejilla cruzada**: trama ortogonal dinámica.
+- **Herramientas de Esculpido Manual (Directo en Pantalla)**:
+  - `▲ Pico Afilado`: deforma las líneas en crestas triangulares agudas (estilo cordilleras o picos rocosos).
+  - `∩ Colina Suave`: eleva abultamientos orgánicos continuos con caída gaussiana suave.
+  - `🌀 Torsión`: retuerce las trayectorias en remolinos y pliegues dimensionales.
+  - `— Aplanar`: borrador que calma zonas y restablece las líneas a su geometría base.
+  - Botones de acción: `↶ Deshacer último trazo` y `🗑️ Limpiar Trama`.
+
+### 3. Capa 2: Elementos de Diferencia y Enfoque (Máximo 3)
+Permite agregar capas focales para generar contraste geométrico o editorial:
+- **Formas**: Círculos (soles/lunas), marcos rectangulares translúcidos, polígonos regulares y tipografía/glifos.
+- **Profundidad de capa**:
+  - **Detrás de la trama**: el elemento queda en segundo plano, recortado u ocluido parcialmente por las líneas.
+  - **Delante de la trama**: se superpone al frente con modos de mezcla y opacidades.
+- **Controles**: Posición `(X, Y)` porcentual, tamaño y opacidad.
 
 ---
 
-## 🏛️ Arquitectura Modular (Estratégica / Plugins)
+## 📦 Exportación de Alta Calidad
 
-El proyecto utiliza una arquitectura desacoplada para permitir agregar decenas de patrones sin tocar la interfaz ni el motor de exportación:
-
-```
-nature-gen-art/
-├── index.html                 # Interfaz de usuario y visor vectorial responsivo
-├── css/
-│   └── style.css              # Tema oscuro y controles táctiles/sliders
-├── js/
-│   ├── app.js                 # Orquestador de eventos y renderizado
-│   ├── ui.js                  # Generador dinámico reactivo de controles según el esquema del patrón
-│   ├── exporter.js            # Motor de exportación y descarga SVG / código
-│   └── patterns/              # Módulos de patrones independientes
-│       ├── registry.js        # Catálogo donde se registran los patrones
-│       ├── phyllotaxis.js     # Patrón de filotaxis
-│       └── branching-tree.js  # Patrón de árbol fractal
-```
+- **Descarga SVG**: Archivo `.svg` vectorial puro, ligero e infinitamente escalable (listo para abrir y editar en Adobe Illustrator, o enviar a corte láser y plotters de plumilla como Axidraw).
+- **Copiar SVG**: Copia el código XML directamente al portapapeles.
+- **Ver y Copiar Código**: Muestra el snippet JavaScript autónomo para reproducir la composición en cualquier proyecto web.
 
 ---
 
 ## 💻 Ejecución Local
-
-Para ejecutarlo localmente en cualquier máquina:
 
 ```bash
 # Con Python 3

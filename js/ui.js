@@ -1,252 +1,482 @@
 /**
- * Módulo UI: Generador dinámico de controles a partir del esquema de parámetros del patrón
+ * Gestor de Interfaz de Usuario para Arte Abstracto por Capas
  */
 
+import { ASPECT_RATIOS } from './engine.js';
+import { PALETTES } from './palettes.js';
+import { PRESETS } from './presets.js';
+
 export class UIManager {
-  constructor({ containerId, onParamChange, onPresetSelect }) {
+  constructor({ containerId, onStateChange, onUndo, onClearDeformations }) {
     this.container = document.getElementById(containerId);
-    this.onParamChange = onParamChange;
-    this.onPresetSelect = onPresetSelect;
-    this.currentValues = {};
+    this.onStateChange = onStateChange;
+    this.onUndo = onUndo;
+    this.onClearDeformations = onClearDeformations;
   }
 
-  /**
-   * Renderiza el panel de controles completo para un patrón
-   */
-  renderPatternControls(pattern) {
+  render(state, engine) {
     if (!this.container) return;
     this.container.innerHTML = '';
 
-    // 1. Sección de Presets rápidos
-    if (pattern.presets && pattern.presets.length > 0) {
-      const presetsSection = document.createElement('div');
-      presetsSection.className = 'control-group';
-      presetsSection.innerHTML = `
-        <span class="section-label">Presets Botánicos</span>
-        <div class="presets-wrap" id="presets-container"></div>
-      `;
-      const presetsWrap = presetsSection.querySelector('#presets-container');
-      
-      pattern.presets.forEach(preset => {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'preset-chip';
-        chip.textContent = preset.name;
-        chip.addEventListener('click', () => {
-          if (preset.deformations && pattern.deformations !== undefined) {
-            pattern.deformations = JSON.parse(JSON.stringify(preset.deformations));
-          }
-          this.applyPreset(preset.values, pattern);
-        });
-        presetsWrap.appendChild(chip);
-      });
+    // 1. Presets Rápidos
+    this.renderPresetsSection(state, engine);
 
-      this.container.appendChild(presetsSection);
+    // 2. Lienzo & Formato (Aspect Ratio y Paletas)
+    this.renderCanvasSection(state);
 
-      // Si el patrón tiene historial de esculpido (como sculpt-terrain)
-      if (pattern.id === 'sculpt-terrain') {
-        const actionSection = document.createElement('div');
-        actionSection.className = 'sculpt-actions-bar';
-        actionSection.innerHTML = `
-          <button type="button" id="btn-undo-sculpt" class="btn" title="Deshacer última deformación">↶ Deshacer</button>
-          <button type="button" id="btn-clear-sculpt" class="btn" title="Borrar todas las deformaciones">🗑️ Limpiar Trama</button>
-        `;
-        this.container.appendChild(actionSection);
+    // 3. Capa 1: Trama de Repetición
+    this.renderPatternSection(state);
 
-        actionSection.querySelector('#btn-undo-sculpt').addEventListener('click', () => {
-          if (pattern.undoLastDeformation) {
-            pattern.undoLastDeformation();
-            this.notifyChange();
-            UIManager.showToast('↶ Último trazo deshecho');
-          }
-        });
+    // 4. Herramientas de Esculpido Manual
+    this.renderSculptSection(state, engine);
 
-        actionSection.querySelector('#btn-clear-sculpt').addEventListener('click', () => {
-          if (pattern.clearDeformations) {
-            pattern.clearDeformations();
-            this.notifyChange();
-            UIManager.showToast('🗑️ Trama restablecida a base pura');
-          }
-        });
-      }
-    }
-
-    // 2. Renderizar cada parámetro según su tipo
-    const schema = pattern.parameters;
-    this.currentValues = {};
-
-    for (const [key, param] of Object.entries(schema)) {
-      this.currentValues[key] = param.default;
-
-      if (param.type === 'slider') {
-        this.renderSlider(key, param);
-      } else if (param.type === 'segmented') {
-        this.renderSegmented(key, param);
-      } else if (param.type === 'palette') {
-        this.renderPalette(key, param);
-      }
-    }
+    // 5. Capas de Diferencia (Máx 3)
+    this.renderDifferenceSection(state);
   }
 
-  /**
-   * Renderiza un control tipo slider
-   */
-  renderSlider(key, param) {
-    const group = document.createElement('div');
-    group.className = 'control-group';
+  renderPresetsSection(state, engine) {
+    const section = document.createElement('div');
+    section.className = 'control-group';
+    section.innerHTML = `
+      <span class="section-label">Composiciones / Presets</span>
+      <div class="presets-wrap" id="presets-list"></div>
+    `;
+    const list = section.querySelector('#presets-list');
 
-    const header = document.createElement('div');
-    header.className = 'control-header';
-    header.innerHTML = `
-      <span class="control-label">${param.label}</span>
-      <span class="control-value" id="val-${key}">${param.default}${param.unit || ''}</span>
+    PRESETS.forEach(preset => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'preset-chip';
+      chip.textContent = preset.name;
+      chip.addEventListener('click', () => {
+        // Cargar estado profundo del preset
+        Object.assign(state.canvas, JSON.parse(JSON.stringify(preset.state.canvas)));
+        Object.assign(state.pattern, JSON.parse(JSON.stringify(preset.state.pattern)));
+        Object.assign(state.brush, JSON.parse(JSON.stringify(preset.state.brush)));
+        state.differenceLayers = JSON.parse(JSON.stringify(preset.state.differenceLayers || []));
+        engine.setDeformations(preset.deformations || []);
+
+        this.render(state, engine);
+        this.notifyChange();
+        UIManager.showToast(`✨ Preset cargado: ${preset.name}`);
+      });
+      list.appendChild(chip);
+    });
+
+    this.container.appendChild(section);
+  }
+
+  renderCanvasSection(state) {
+    const section = document.createElement('div');
+    section.className = 'control-section';
+    section.innerHTML = `
+      <div class="section-title">📐 1. Lienzo & Formato</div>
+      <div class="control-group">
+        <label class="control-label">Aspect Ratio (Proporción)</label>
+        <div class="aspect-grid" id="aspect-ratio-buttons"></div>
+      </div>
+      <div class="control-group">
+        <label class="control-label">Paleta de Color</label>
+        <div class="palette-grid" id="palette-buttons"></div>
+      </div>
     `;
 
-    const input = document.createElement('input');
-    input.type = 'range';
-    input.min = param.min;
-    input.max = param.max;
-    input.step = param.step || 1;
-    input.value = param.default;
-    input.id = `input-${key}`;
-
-    input.addEventListener('input', (e) => {
-      const val = parseFloat(e.target.value);
-      this.currentValues[key] = val;
-      const displayVal = group.querySelector(`#val-${key}`);
-      if (displayVal) {
-        displayVal.textContent = `${val}${param.unit || ''}`;
-      }
-      this.notifyChange();
-    });
-
-    group.appendChild(header);
-    group.appendChild(input);
-    this.container.appendChild(group);
-  }
-
-  /**
-   * Renderiza un control de botones segmentados
-   */
-  renderSegmented(key, param) {
-    const group = document.createElement('div');
-    group.className = 'control-group';
-
-    const label = document.createElement('span');
-    label.className = 'section-label';
-    label.textContent = param.label;
-    group.appendChild(label);
-
-    const control = document.createElement('div');
-    control.className = 'segmented-control';
-
-    param.options.forEach(opt => {
+    // Botones de Aspect Ratio
+    const aspectContainer = section.querySelector('#aspect-ratio-buttons');
+    for (const [key, val] of Object.entries(ASPECT_RATIOS)) {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = `segmented-btn ${opt.value === param.default ? 'active' : ''}`;
-      btn.textContent = opt.label;
-      btn.dataset.value = opt.value;
-
+      btn.className = `aspect-btn ${state.canvas.aspectRatio === key ? 'active' : ''}`;
+      btn.textContent = key;
+      btn.title = val.label;
       btn.addEventListener('click', () => {
-        control.querySelectorAll('.segmented-btn').forEach(b => b.classList.remove('active'));
+        state.canvas.aspectRatio = key;
+        aspectContainer.querySelectorAll('.aspect-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        this.currentValues[key] = opt.value;
         this.notifyChange();
       });
+      aspectContainer.appendChild(btn);
+    }
 
-      control.appendChild(btn);
-    });
-
-    group.appendChild(control);
-    this.container.appendChild(group);
-  }
-
-  /**
-   * Renderiza el selector de paletas de color con muestras
-   */
-  renderPalette(key, param) {
-    const group = document.createElement('div');
-    group.className = 'control-group';
-
-    const label = document.createElement('span');
-    label.className = 'section-label';
-    label.textContent = param.label;
-    group.appendChild(label);
-
-    const grid = document.createElement('div');
-    grid.className = 'palette-grid';
-
-    for (const [palKey, palDef] of Object.entries(param.palettes)) {
+    // Botones de Paletas
+    const paletteContainer = section.querySelector('#palette-buttons');
+    for (const [palKey, pal] of Object.entries(PALETTES)) {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = `palette-btn ${palKey === param.default ? 'active' : ''}`;
-      btn.dataset.palette = palKey;
-
-      const swatches = palDef.colors.map(c => `<span style="background-color: ${c}"></span>`).join('');
+      btn.className = `palette-btn ${state.canvas.paletteId === palKey ? 'active' : ''}`;
+      
+      const swatches = pal.swatches.map(c => `<span style="background-color: ${c}"></span>`).join('');
       btn.innerHTML = `
         <div class="palette-colors">${swatches}</div>
-        <span class="palette-name">${palDef.name}</span>
+        <span class="palette-name">${pal.name}</span>
       `;
 
       btn.addEventListener('click', () => {
-        grid.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
+        state.canvas.paletteId = palKey;
+        state.canvas.bgColor = pal.bg;
+        state.pattern.color = pal.line;
+        
+        // Actualizar color de capas de diferencia si no fueron customizadas
+        if (state.differenceLayers.length > 0) {
+          state.differenceLayers.forEach((l, idx) => {
+            l.color = idx === 0 ? pal.accent1 : pal.accent2;
+          });
+        }
+
+        paletteContainer.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        this.currentValues[key] = palKey;
         this.notifyChange();
       });
-
-      grid.appendChild(btn);
+      paletteContainer.appendChild(btn);
     }
 
-    group.appendChild(grid);
-    this.container.appendChild(group);
+    this.container.appendChild(section);
   }
 
-  /**
-   * Aplica un preset completo y actualiza todos los controles visuales
-   */
-  applyPreset(values, pattern) {
-    Object.assign(this.currentValues, values);
+  renderPatternSection(state) {
+    const section = document.createElement('div');
+    section.className = 'control-section';
+    section.innerHTML = `
+      <div class="section-title">〰️ 2. Capa 1: Trama de Repetición</div>
+      
+      <div class="control-group">
+        <label class="control-label">Geometría de Trama</label>
+        <div class="segmented-control" id="pattern-type-control">
+          <button type="button" class="segmented-btn ${state.pattern.type === 'lines' ? 'active' : ''}" data-type="lines">Líneas</button>
+          <button type="button" class="segmented-btn ${state.pattern.type === 'concentric' ? 'active' : ''}" data-type="concentric">Concéntrico</button>
+          <button type="button" class="segmented-btn ${state.pattern.type === 'grid' ? 'active' : ''}" data-type="grid">Rejilla</button>
+        </div>
+      </div>
 
-    for (const [key, val] of Object.entries(values)) {
-      const slider = document.getElementById(`input-${key}`);
-      const valLabel = document.getElementById(`val-${key}`);
-      if (slider && valLabel) {
-        slider.value = val;
-        const schema = pattern.parameters[key];
-        valLabel.textContent = `${val}${schema?.unit || ''}`;
-      }
+      <div id="concentric-sides-group" class="control-group" style="display: ${state.pattern.type === 'concentric' ? 'flex' : 'none'};">
+        <label class="control-label">Polígono Concéntrico</label>
+        <div class="segmented-control" id="polygon-sides-control">
+          <button type="button" class="segmented-btn ${state.pattern.polygonSides === 3 ? 'active' : ''}" data-sides="3">Triángulo</button>
+          <button type="button" class="segmented-btn ${state.pattern.polygonSides === 4 ? 'active' : ''}" data-sides="4">Rombo</button>
+          <button type="button" class="segmented-btn ${state.pattern.polygonSides === 6 ? 'active' : ''}" data-sides="6">Hexágono</button>
+          <button type="button" class="segmented-btn ${state.pattern.polygonSides === 36 ? 'active' : ''}" data-sides="36">Círculo</button>
+        </div>
+      </div>
 
-      // Segmented
-      const segmentedGroup = this.container.querySelectorAll(`.segmented-btn[data-value="${val}"]`);
-      segmentedGroup.forEach(btn => {
-        const parent = btn.parentElement;
-        parent.querySelectorAll('.segmented-btn').forEach(b => b.classList.remove('active'));
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">Densidad / Repeticiones</span>
+          <span class="control-value" id="val-density">${state.pattern.density}</span>
+        </div>
+        <input type="range" id="input-density" min="15" max="85" step="1" value="${state.pattern.density}">
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">Ángulo de Inclinación</span>
+          <span class="control-value" id="val-angle">${state.pattern.angle}°</span>
+        </div>
+        <input type="range" id="input-angle" min="0" max="180" step="1" value="${state.pattern.angle}">
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">Grosor de Línea</span>
+          <span class="control-value" id="val-strokeWidth">${state.pattern.strokeWidth}px</span>
+        </div>
+        <input type="range" id="input-strokeWidth" min="0.5" max="4.0" step="0.1" value="${state.pattern.strokeWidth}">
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">Ondulación Matemática Base</span>
+          <span class="control-value" id="val-baseWaviness">${state.pattern.baseWaviness}px</span>
+        </div>
+        <input type="range" id="input-baseWaviness" min="0" max="20" step="1" value="${state.pattern.baseWaviness}">
+      </div>
+    `;
+
+    // Tipo de patrón
+    const typeBtns = section.querySelectorAll('#pattern-type-control .segmented-btn');
+    const concentricGroup = section.querySelector('#concentric-sides-group');
+    typeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        typeBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        state.pattern.type = btn.dataset.type;
+        concentricGroup.style.display = state.pattern.type === 'concentric' ? 'flex' : 'none';
+        this.notifyChange();
       });
+    });
 
-      // Palette
-      const paletteBtn = this.container.querySelector(`.palette-btn[data-palette="${val}"]`);
-      if (paletteBtn) {
-        const parent = paletteBtn.parentElement;
-        parent.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
-        paletteBtn.classList.add('active');
-      }
+    // Lados de polígono concéntrico
+    const sidesBtns = section.querySelectorAll('#polygon-sides-control .segmented-btn');
+    sidesBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        sidesBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.pattern.polygonSides = parseInt(btn.dataset.sides, 10);
+        this.notifyChange();
+      });
+    });
+
+    // Sliders
+    this.bindSlider(section, 'density', state.pattern, '', (v) => v);
+    this.bindSlider(section, 'angle', state.pattern, '°', (v) => v);
+    this.bindSlider(section, 'strokeWidth', state.pattern, 'px', (v) => v);
+    this.bindSlider(section, 'baseWaviness', state.pattern, 'px', (v) => v);
+
+    this.container.appendChild(section);
+  }
+
+  renderSculptSection(state, engine) {
+    const section = document.createElement('div');
+    section.className = 'control-section';
+    section.innerHTML = `
+      <div class="section-title">✍️ 3. Esculpido Directo (Cursor)</div>
+      
+      <div class="control-group">
+        <label class="control-label">Modo de Pincel</label>
+        <div class="segmented-control" id="sculpt-mode-control">
+          <button type="button" class="segmented-btn ${state.brush.mode === 'peak' ? 'active' : ''}" data-mode="peak">▲ Pico</button>
+          <button type="button" class="segmented-btn ${state.brush.mode === 'smooth' ? 'active' : ''}" data-mode="smooth">∩ Colina</button>
+          <button type="button" class="segmented-btn ${state.brush.mode === 'twist' ? 'active' : ''}" data-mode="twist">🌀 Giro</button>
+          <button type="button" class="segmented-btn ${state.brush.mode === 'flatten' ? 'active' : ''}" data-mode="flatten">— Aplanar</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">Radio del Pincel</span>
+          <span class="control-value" id="val-brushRadius">${state.brush.radius}px</span>
+        </div>
+        <input type="range" id="input-brushRadius" min="25" max="160" step="5" value="${state.brush.radius}">
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <span class="control-label">Fuerza de Deformación</span>
+          <span class="control-value" id="val-brushStrength">${state.brush.strength}px</span>
+        </div>
+        <input type="range" id="input-brushStrength" min="10" max="120" step="5" value="${state.brush.strength}">
+      </div>
+
+      <div class="sculpt-actions-bar">
+        <button type="button" id="btn-undo" class="btn">↶ Deshacer</button>
+        <button type="button" id="btn-clear" class="btn">🗑️ Limpiar Trama</button>
+      </div>
+    `;
+
+    // Modos de esculpido
+    const modeBtns = section.querySelectorAll('#sculpt-mode-control .segmented-btn');
+    modeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        modeBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.brush.mode = btn.dataset.mode;
+      });
+    });
+
+    // Sliders
+    this.bindSlider(section, 'brushRadius', state.brush, 'px', (v) => { state.brush.radius = v; return v; });
+    this.bindSlider(section, 'brushStrength', state.brush, 'px', (v) => { state.brush.strength = v; return v; });
+
+    // Acciones
+    section.querySelector('#btn-undo').addEventListener('click', () => {
+      if (this.onUndo) this.onUndo();
+    });
+
+    section.querySelector('#btn-clear').addEventListener('click', () => {
+      if (this.onClearDeformations) this.onClearDeformations();
+    });
+
+    this.container.appendChild(section);
+  }
+
+  renderDifferenceSection(state) {
+    const maxLayers = 3;
+    const count = state.differenceLayers.length;
+
+    const section = document.createElement('div');
+    section.className = 'control-section';
+    section.innerHTML = `
+      <div class="section-title-between">
+        <span class="section-title">✨ 4. Capas de Diferencia (${count}/${maxLayers})</span>
+        ${count < maxLayers ? '<button type="button" id="btn-add-diff" class="btn btn-sm btn-primary">+ Añadir</button>' : ''}
+      </div>
+      <div id="diff-layers-container" class="diff-layers-list"></div>
+    `;
+
+    const list = section.querySelector('#diff-layers-container');
+
+    if (count === 0) {
+      list.innerHTML = `<p class="empty-hint">Sin capas de diferencia. Añade un sol, prisma geométrico o tipografía para crear contraste.</p>`;
+    } else {
+      state.differenceLayers.forEach((layer, idx) => {
+        const card = document.createElement('div');
+        card.className = 'diff-card';
+        card.innerHTML = `
+          <div class="diff-card-header">
+            <span class="diff-card-title">Capa ${idx + 1}: ${layer.name || layer.type}</span>
+            <button type="button" class="btn-icon-xs btn-remove-layer" title="Eliminar capa">✕</button>
+          </div>
+          
+          <div class="diff-card-body">
+            <!-- Tipo de Elemento -->
+            <div class="control-group">
+              <label class="control-label-sm">Elemento</label>
+              <div class="segmented-control seg-type">
+                <button type="button" class="segmented-btn ${layer.type === 'circle' ? 'active' : ''}" data-type="circle">Círculo</button>
+                <button type="button" class="segmented-btn ${layer.type === 'rectangle' ? 'active' : ''}" data-type="rectangle">Marco</button>
+                <button type="button" class="segmented-btn ${layer.type === 'polygon' ? 'active' : ''}" data-type="polygon">Polígono</button>
+                <button type="button" class="segmented-btn ${layer.type === 'text' ? 'active' : ''}" data-type="text">Texto</button>
+              </div>
+            </div>
+
+            <!-- Posición de Profundidad (Detrás / Delante) -->
+            <div class="control-group">
+              <label class="control-label-sm">Profundidad</label>
+              <div class="segmented-control seg-placement">
+                <button type="button" class="segmented-btn ${layer.placement === 'behind' ? 'active' : ''}" data-place="behind">Detrás de la Trama</button>
+                <button type="button" class="segmented-btn ${layer.placement === 'in-front' ? 'active' : ''}" data-place="in-front">Delante de la Trama</button>
+              </div>
+            </div>
+
+            ${layer.type === 'text' ? `
+            <div class="control-group">
+              <label class="control-label-sm">Glifo / Texto</label>
+              <input type="text" class="text-input" value="${layer.text || 'A'}" maxlength="8">
+            </div>
+            ` : ''}
+
+            <!-- Sliders de Posición y Tamaño -->
+            <div class="control-group">
+              <div class="control-header">
+                <span class="control-label-sm">Tamaño</span>
+                <span class="control-value-sm val-size">${layer.size}px</span>
+              </div>
+              <input type="range" class="input-size" min="30" max="360" step="5" value="${layer.size}">
+            </div>
+
+            <div class="dual-slider-row">
+              <div class="control-group flex-1">
+                <span class="control-label-sm">Posición X: <span class="val-x">${layer.x}%</span></span>
+                <input type="range" class="input-x" min="5" max="95" step="1" value="${layer.x}">
+              </div>
+              <div class="control-group flex-1">
+                <span class="control-label-sm">Posición Y: <span class="val-y">${layer.y}%</span></span>
+                <input type="range" class="input-y" min="5" max="95" step="1" value="${layer.y}">
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Eventos de la tarjeta
+        card.querySelector('.btn-remove-layer').addEventListener('click', () => {
+          state.differenceLayers.splice(idx, 1);
+          this.renderDifferenceSection(state);
+          this.notifyChange();
+        });
+
+        // Tipo
+        const segTypes = card.querySelectorAll('.seg-type .segmented-btn');
+        segTypes.forEach(btn => {
+          btn.addEventListener('click', () => {
+            layer.type = btn.dataset.type;
+            this.renderDifferenceSection(state);
+            this.notifyChange();
+          });
+        });
+
+        // Profundidad
+        const segPlacements = card.querySelectorAll('.seg-placement .segmented-btn');
+        segPlacements.forEach(btn => {
+          btn.addEventListener('click', () => {
+            segPlacements.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            layer.placement = btn.dataset.place;
+            this.notifyChange();
+          });
+        });
+
+        // Texto
+        const textInput = card.querySelector('.text-input');
+        if (textInput) {
+          textInput.addEventListener('input', (e) => {
+            layer.text = e.target.value;
+            this.notifyChange();
+          });
+        }
+
+        // Sliders
+        const sizeInput = card.querySelector('.input-size');
+        const sizeVal = card.querySelector('.val-size');
+        sizeInput.addEventListener('input', (e) => {
+          layer.size = parseInt(e.target.value, 10);
+          sizeVal.textContent = `${layer.size}px`;
+          this.notifyChange();
+        });
+
+        const xInput = card.querySelector('.input-x');
+        const xVal = card.querySelector('.val-x');
+        xInput.addEventListener('input', (e) => {
+          layer.x = parseInt(e.target.value, 10);
+          xVal.textContent = `${layer.x}%`;
+          this.notifyChange();
+        });
+
+        const yInput = card.querySelector('.input-y');
+        const yVal = card.querySelector('.val-y');
+        yInput.addEventListener('input', (e) => {
+          layer.y = parseInt(e.target.value, 10);
+          yVal.textContent = `${layer.y}%`;
+          this.notifyChange();
+        });
+
+        list.appendChild(card);
+      });
     }
 
-    if (this.onPresetSelect) {
-      this.onPresetSelect(this.currentValues);
+    const btnAdd = section.querySelector('#btn-add-diff');
+    if (btnAdd) {
+      btnAdd.addEventListener('click', () => {
+        if (state.differenceLayers.length >= maxLayers) return;
+        const pal = PALETTES[state.canvas.paletteId] || PALETTES.petrol;
+        const newLayer = {
+          id: `diff-${Date.now()}`,
+          name: `Elemento ${state.differenceLayers.length + 1}`,
+          active: true,
+          type: 'circle',
+          placement: 'behind',
+          x: 50,
+          y: 50,
+          size: 100,
+          color: state.differenceLayers.length === 0 ? pal.accent1 : pal.accent2,
+          opacity: 0.9,
+          blendMode: 'normal'
+        };
+        state.differenceLayers.push(newLayer);
+        this.renderDifferenceSection(state);
+        this.notifyChange();
+        UIManager.showToast('✨ Capa de diferencia añadida');
+      });
+    }
+
+    this.container.appendChild(section);
+  }
+
+  bindSlider(container, key, targetObj, unit, transform) {
+    const input = container.querySelector(`#input-${key}`);
+    const display = container.querySelector(`#val-${key}`);
+    if (input && display) {
+      input.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        targetObj[key] = transform(val);
+        display.textContent = `${val}${unit}`;
+        this.notifyChange();
+      });
     }
   }
 
   notifyChange() {
-    if (this.onParamChange) {
-      this.onParamChange({ ...this.currentValues });
+    if (this.onStateChange) {
+      this.onStateChange();
     }
-  }
-
-  getValues() {
-    return { ...this.currentValues };
   }
 
   static showToast(message, duration = 2500) {
