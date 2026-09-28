@@ -17,10 +17,46 @@ class App {
 
     this.engine = new AbstractEngine();
 
-    // Estado inicial cargado desde el primer preset (Cordillera de Picos)
-    const initialPreset = PRESETS[0];
-    this.state = JSON.parse(JSON.stringify(initialPreset.state));
-    this.engine.setDeformations(initialPreset.deformations || []);
+    // Estado inicial: Estilo Carbón y Tiza (Charcoal & Chalk)
+    this.state = {
+      canvas: {
+        aspectRatio: '1:1',
+        bgColor: '#101012'
+      },
+      pattern: {
+        shape: 'line',
+        polygonSides: 4,
+        distribution: 'linear',
+        posX: 50,
+        posY: 50,
+        sizeX: 500,
+        sizeY: 380,
+        size: 180,
+        copies: 38,
+        angle: 0,
+        stepX: 0,
+        stepY: 35,
+        scaleStep: 1.0,
+        rotateStep: 0,
+        moveX: 0,
+        moveY: 0,
+        anchor: 'center',
+        jitter: 1.2,
+        skipChance: 0,
+        lineSwappiness: 0,
+        waviness: 0,
+        strokeWidth: 1.2,
+        opacity: 0.9,
+        color: '#f4f4f5'
+      },
+      brush: {
+        mode: 'peak',
+        radius: 75,
+        strength: 55
+      },
+      differenceLayers: []
+    };
+    this.engine.setDeformations([]);
 
     this.initUI();
     this.setupEvents();

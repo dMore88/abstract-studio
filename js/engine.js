@@ -105,16 +105,8 @@ export class AbstractEngine {
 
     if (distribution === 'radial') {
       return this.renderRadialDistribution(config, bounds);
-    } else if (distribution === 'grid') {
-      if (config.shape === 'line') {
-        const hConfig = { ...config, angle: 0 };
-        const vConfig = { ...config, angle: 90 };
-        return this.renderLinearLines(hConfig, bounds) + '\n' + this.renderLinearLines(vConfig, bounds);
-      } else {
-        return this.renderGridShapes(config, bounds);
-      }
     } else {
-      // Distribución Lineal
+      // Distribución Lineal (una debajo de la otra o según ángulo / paso)
       if (config.shape === 'line') {
         return this.renderLinearLines(config, bounds);
       } else {
@@ -124,131 +116,49 @@ export class AbstractEngine {
   }
 
   /**
-   * Modo Cuadrícula para Figuras Geométricas (Matriz 2D de círculos, polígonos, pétalos)
-   */
-  renderGridShapes(config, bounds) {
-    const { width, height } = bounds;
-    const copies = parseInt(config.copies, 10) || 36;
-    const cols = Math.max(2, Math.ceil(Math.sqrt(copies)));
-    const rows = Math.max(2, Math.ceil(copies / cols));
-    const padX = width * 0.12;
-    const padY = height * 0.12;
-    const stepX = (width - 2 * padX) / Math.max(1, cols - 1);
-    const stepY = (height - 2 * padY) / Math.max(1, rows - 1);
-    const cellSize = Math.min(stepX, stepY) * 0.42;
-
-    const jitter = parseFloat(config.jitter) || 0;
-    const skipChance = (parseFloat(config.skipChance) || 0) / 100;
-    const strokeWidth = parseFloat(config.strokeWidth) || 1.2;
-    const baseOpacity = parseFloat(config.opacity) || 0.85;
-    const lineColor = config.color || '#a5f3fc';
-
-    const paths = [];
-    let count = 0;
-
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        if (count >= copies) break;
-        const cellCx = padX + c * stepX;
-        const cellCy = padY + r * stepY;
-        const rawShape = this.createSeedVertices(config.shape, config.polygonSides, cellSize, cellCx, cellCy, bounds);
-        const numVerts = rawShape.length;
-
-        let d = '';
-        let isDrawing = false;
-
-        for (let v = 0; v < numVerts; v++) {
-          let x = rawShape[v].x;
-          let y = rawShape[v].y;
-
-          if (jitter > 0) {
-            x += (Math.sin(count * 17.1 + v * 53.7) * 0.5) * jitter;
-            y += (Math.cos(count * 29.8 + v * 19.3) * 0.5) * jitter;
-          }
-
-          // Deformaciones
-          for (const def of this.deformations) {
-            const dx = x - def.x;
-            const dy = y - def.y;
-            const dist = Math.hypot(dx, dy);
-            if (dist < def.radius) {
-              const factor = Math.max(0, 1 - dist / def.radius);
-              if (def.mode === 'peak') {
-                y -= def.strength * factor;
-              } else if (def.mode === 'smooth') {
-                y -= def.strength * 0.5 * (1 + Math.cos((Math.PI * dist) / def.radius));
-              } else if (def.mode === 'twist') {
-                const swirl = (factor * Math.PI * def.strength) / 25;
-                const curDist = Math.hypot(dx, dy);
-                const curAngle = Math.atan2(dy, dx) + swirl;
-                x = def.x + Math.cos(curAngle) * curDist;
-                y = def.y + Math.sin(curAngle) * curDist;
-              }
-            }
-          }
-
-          const skipHash = Math.abs(Math.sin(count * 43.1 + v * 97.7));
-          if (skipChance > 0 && skipHash < skipChance) {
-            isDrawing = false;
-            continue;
-          }
-
-          const vx = x.toFixed(1);
-          const vy = y.toFixed(1);
-          if (!isDrawing) {
-            d += ` M ${vx} ${vy}`;
-            isDrawing = true;
-          } else {
-            d += ` L ${vx} ${vy}`;
-          }
-        }
-
-        if (isDrawing && config.shape !== 'line' && skipChance === 0) d += ' Z';
-        if (d.trim().length > 0) {
-          paths.push(`<path d="${d}" fill="none" stroke="${lineColor}" stroke-width="${strokeWidth}" stroke-opacity="${baseOpacity}" stroke-linecap="round" stroke-linejoin="round" />`);
-        }
-        count++;
-      }
-    }
-
-    return paths.join('\n    ');
-  }
-
-  /**
-   * Modo Lineal: Trama de Líneas Paralelas de borde a borde (con rotación, textura UJI y esculpido)
+   * Modo Lineal: Trama de Líneas contenidas dentro de una caja delimitadora (rectángulo invisible)
+   * sizeX: largo de cada línea | sizeY: cobertura de apilamiento vertical
    */
   renderLinearLines(config, bounds) {
     const { width, height } = bounds;
-    const copies = parseInt(config.copies, 10) || 48;
+    const copies = Math.max(1, parseInt(config.copies, 10) || 36);
     const angleDeg = parseFloat(config.angle || 0);
     const strokeWidth = parseFloat(config.strokeWidth) || 1.2;
-    const baseOpacity = parseFloat(config.opacity) || 0.85;
+    const baseOpacity = parseFloat(config.opacity) || 0.9;
     const baseWave = parseFloat(config.waviness) || 0;
     const jitter = parseFloat(config.jitter) || 0;
     const skipChance = (parseFloat(config.skipChance) || 0) / 100;
     const swappiness = (parseFloat(config.lineSwappiness) || 0) / 100;
-    const lineColor = config.color || '#a5f3fc';
+    const lineColor = config.color || '#f4f4f5';
 
-    const cx = width / 2;
-    const cy = height / 2;
+    // Posición del centro (0 a 100%, 50% al centro)
+    const posX = parseFloat(config.posX !== undefined ? config.posX : (config.centerX !== undefined ? config.centerX : 50));
+    const posY = parseFloat(config.posY !== undefined ? config.posY : (config.centerY !== undefined ? config.centerY : 50));
+    const cx = (posX / 100) * width;
+    const cy = (posY / 100) * height;
+
+    // Tamaño del rectángulo invisible
+    const sizeX = parseFloat(config.sizeX !== undefined ? config.sizeX : (config.size || 450));
+    const sizeY = parseFloat(config.sizeY !== undefined ? config.sizeY : (config.size || 350));
+
     const rad = (angleDeg * Math.PI) / 180;
     const cosA = Math.cos(rad);
     const sinA = Math.sin(rad);
 
-    const diag = Math.hypot(width, height) * 1.05;
-    const lineSpacing = diag / (copies + 1);
-    const numPointsPerLine = 130;
-    const stepT = diag / (numPointsPerLine - 1);
-    const halfDiag = diag / 2;
+    const halfSpanY = sizeY / 2;
+    const halfSpanX = sizeX / 2;
+    const lineSpacing = copies > 1 ? sizeY / (copies - 1) : 0;
+    const numPointsPerLine = Math.max(30, Math.min(220, Math.floor(sizeX / 3)));
+    const stepT = numPointsPerLine > 1 ? sizeX / (numPointsPerLine - 1) : 0;
 
     const paths = [];
 
     for (let l = 0; l < copies; l++) {
-      const lineOffset = -halfDiag + (l + 1) * lineSpacing;
+      const lineOffset = copies > 1 ? -halfSpanY + l * lineSpacing : 0;
       let verts = [];
 
       for (let p = 0; p < numPointsPerLine; p++) {
-        const t = -halfDiag + p * stepT;
+        const t = -halfSpanX + p * stepT;
         let u = t;
         let v = lineOffset;
 
@@ -334,9 +244,8 @@ export class AbstractEngine {
         }
       }
 
-      const op = (baseOpacity * 0.4 + 0.6 * (l / copies)).toFixed(2);
       if (d.trim().length > 0) {
-        paths.push(`<path d="${d}" fill="none" stroke="${lineColor}" stroke-width="${strokeWidth}" stroke-opacity="${op}" stroke-linecap="round" stroke-linejoin="round" />`);
+        paths.push(`<path d="${d}" fill="none" stroke="${lineColor}" stroke-width="${strokeWidth}" stroke-opacity="${baseOpacity}" stroke-linecap="round" stroke-linejoin="round" />`);
       }
     }
 
@@ -344,46 +253,48 @@ export class AbstractEngine {
   }
 
   /**
-   * Modo Lineal para Figuras Geométricas (Repetición escalonada como Imagen 2 de Illustrator)
+   * Modo Lineal para Figuras Geométricas: copias repetidas secuencialmente (apiladas en vertical u horizontal)
    */
   renderLinearShapes(config, bounds) {
     const { width, height } = bounds;
-    const cx = (parseFloat(config.centerX || 50) / 100) * width;
-    const cy = (parseFloat(config.centerY || 50) / 100) * height;
-    const copies = parseInt(config.copies, 10) || 30;
-    const moveX = parseFloat(config.moveX || 8);
-    const moveY = parseFloat(config.moveY || 8);
+    const copies = Math.max(1, parseInt(config.copies, 10) || 14);
+
+    const posX = parseFloat(config.posX !== undefined ? config.posX : (config.centerX !== undefined ? config.centerX : 50));
+    const posY = parseFloat(config.posY !== undefined ? config.posY : (config.centerY !== undefined ? config.centerY : 50));
+    const cx = (posX / 100) * width;
+    const cy = (posY / 100) * height;
+
+    const stepX = parseFloat(config.stepX !== undefined ? config.stepX : (config.moveX !== undefined ? config.moveX : 0));
+    const stepY = parseFloat(config.stepY !== undefined ? config.stepY : (config.moveY !== undefined ? config.moveY : 35));
     const scaleFactor = parseFloat(config.scaleStep) || 1.0;
     const rotateStep = (parseFloat(config.rotateStep) || 0) * (Math.PI / 180);
+    const baseRadius = parseFloat(config.size) || 60;
     const jitter = parseFloat(config.jitter) || 0;
     const skipChance = (parseFloat(config.skipChance) || 0) / 100;
     const strokeWidth = parseFloat(config.strokeWidth) || 1.2;
-    const baseOpacity = parseFloat(config.opacity) || 0.8;
-    const lineColor = config.color || '#a5f3fc';
+    const baseOpacity = parseFloat(config.opacity) || 0.85;
+    const lineColor = config.color || '#f4f4f5';
 
-    const rawShape = this.createSeedVertices(config.shape, config.polygonSides, parseFloat(config.size) || 120, cx, cy, bounds);
+    const rawShape = this.createSeedVertices(config.shape, config.polygonSides, baseRadius, 0, 0, bounds);
     const numVerts = rawShape.length;
     const paths = [];
 
-    const startX = cx - (copies * moveX) / 2;
-    const startY = cy - (copies * moveY) / 2;
+    const startX = cx - ((copies - 1) * stepX) / 2;
+    const startY = cy - ((copies - 1) * stepY) / 2;
 
     for (let i = 0; i < copies; i++) {
-      const currentScale = Math.pow(scaleFactor, i - copies / 2);
+      const currentScale = Math.pow(scaleFactor, i);
       const angle = i * rotateStep;
-      const ox = startX + i * moveX;
-      const oy = startY + i * moveY;
+      const ox = startX + i * stepX;
+      const oy = startY + i * stepY;
 
       let d = '';
       let isDrawing = false;
 
       for (let v = 0; v < numVerts; v++) {
         const pt = rawShape[v];
-        const rx = pt.x - cx;
-        const ry = pt.y - cy;
-
-        let x = ox + currentScale * (rx * Math.cos(angle) - ry * Math.sin(angle));
-        let y = oy + currentScale * (rx * Math.sin(angle) + ry * Math.cos(angle));
+        let x = ox + currentScale * (pt.x * Math.cos(angle) - pt.y * Math.sin(angle));
+        let y = oy + currentScale * (pt.x * Math.sin(angle) + pt.y * Math.cos(angle));
 
         if (jitter > 0) {
           x += (Math.sin(i * 17.1 + v * 53.7) * 0.5) * jitter;
@@ -408,6 +319,11 @@ export class AbstractEngine {
               const curAngle = Math.atan2(dy, dx) + swirl;
               x = def.x + Math.cos(curAngle) * curDist;
               y = def.y + Math.sin(curAngle) * curDist;
+            } else if (def.mode === 'flatten') {
+              const nomX = ox + currentScale * (pt.x * Math.cos(angle) - pt.y * Math.sin(angle));
+              const nomY = oy + currentScale * (pt.x * Math.sin(angle) + pt.y * Math.cos(angle));
+              x = x * (1 - factor) + nomX * factor;
+              y = y * (1 - factor) + nomY * factor;
             }
           }
         }
@@ -447,11 +363,14 @@ export class AbstractEngine {
     const { width, height } = bounds;
     const shapeType = config.shape || 'circle';
     const polygonSides = parseInt(config.polygonSides, 10) || 4;
-    const baseRadius = parseFloat(config.size) || 300;
-    const centerX = (parseFloat(config.centerX || 50) / 100) * width;
-    const centerY = (parseFloat(config.centerY || 50) / 100) * height;
+    const baseRadius = parseFloat(config.size) || (shapeType === 'line' ? (config.sizeX || 300) : 220);
 
-    const copies = parseInt(config.copies, 10) || 50;
+    const posX = parseFloat(config.posX !== undefined ? config.posX : (config.centerX !== undefined ? config.centerX : 50));
+    const posY = parseFloat(config.posY !== undefined ? config.posY : (config.centerY !== undefined ? config.centerY : 50));
+    const centerX = (posX / 100) * width;
+    const centerY = (posY / 100) * height;
+
+    const copies = parseInt(config.copies, 10) || 40;
     const scaleFactor = parseFloat(config.scaleStep) || 0.96;
     const rotateStep = (parseFloat(config.rotateStep) || 8) * (Math.PI / 180);
     const moveX = parseFloat(config.moveX) || 0;
@@ -463,8 +382,8 @@ export class AbstractEngine {
     const swappiness = (parseFloat(config.lineSwappiness) || 0) / 100;
     const waviness = parseFloat(config.waviness) || 0;
     const strokeWidth = parseFloat(config.strokeWidth) || 1.0;
-    const baseOpacity = parseFloat(config.opacity) || 0.8;
-    const lineColor = config.color || '#a5f3fc';
+    const baseOpacity = parseFloat(config.opacity) || 0.85;
+    const lineColor = config.color || '#f4f4f5';
 
     const anchorX = anchor === 'bottom' ? centerX : anchor === 'side' ? centerX - baseRadius * 0.5 : centerX;
     const anchorY = anchor === 'bottom' ? centerY + baseRadius * 0.5 : centerY;

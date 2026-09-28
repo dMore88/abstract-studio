@@ -1,16 +1,16 @@
 /**
  * Gestor de Interfaz de Usuario para Abstract Studio
- * Arquitectura modular y bien pensada:
- * 1. Figura Base (Semilla y Tamaño: pieza central o sangrado de fondo)
- * 2. Transformación Acumulativa (Estilo Illustrator)
+ * Modo: Carbón y Tiza (Charcoal & Chalk)
+ * 1. Figura Base (Posición X/Y, Tamaño o Caja Delimitadora)
+ * 2. Repetición (Lineal con apilamiento vertical o Radial concéntrico)
  * 3. Textura & Materia (Jitter, Skip Chance, Line Swappiness estilo UJI)
  * 4. Esculpido Manual Directo (Cursor)
- * 5. Capas de Diferencia (Máx 3)
+ * 5. Capas de Diferencia
+ *
+ * Controles de precisión dual: Deslizador (Range) + Teclado (Number Input)
  */
 
 import { ASPECT_RATIOS } from './engine.js';
-import { PALETTES } from './palettes.js';
-import { PRESETS } from './presets.js';
 
 export class UIManager {
   constructor({ containerId, onStateChange, onUndo, onClearDeformations }) {
@@ -24,13 +24,10 @@ export class UIManager {
     if (!this.container) return;
     this.container.innerHTML = '';
 
-    // Galería de Presets Iniciales
-    this.renderPresetsSection(state, engine);
-
     // 0. Formato del Lienzo
     this.renderCanvasSection(state);
 
-    // 1. Figura Base & 2. Transformación & 3. Textura
+    // 1. Figura Base & 2. Repetición (Lineal / Radial) & 3. Textura
     this.renderCoreSection(state, engine);
 
     // 4. Esculpido Directo
@@ -40,49 +37,14 @@ export class UIManager {
     this.renderDifferenceSection(state);
   }
 
-  renderPresetsSection(state, engine) {
-    const section = document.createElement('div');
-    section.className = 'control-group';
-    section.innerHTML = `
-      <span class="section-label">Galería de Composiciones</span>
-      <div class="presets-wrap" id="presets-list"></div>
-    `;
-    const list = section.querySelector('#presets-list');
-
-    PRESETS.forEach(preset => {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'preset-chip';
-      chip.textContent = preset.name;
-      chip.addEventListener('click', () => {
-        Object.assign(state.canvas, JSON.parse(JSON.stringify(preset.state.canvas)));
-        Object.assign(state.pattern, JSON.parse(JSON.stringify(preset.state.pattern)));
-        Object.assign(state.brush, JSON.parse(JSON.stringify(preset.state.brush)));
-        state.differenceLayers = JSON.parse(JSON.stringify(preset.state.differenceLayers || []));
-        engine.setDeformations(preset.deformations || []);
-
-        this.render(state, engine);
-        this.notifyChange();
-        UIManager.showToast(`✨ ${preset.name}`);
-      });
-      list.appendChild(chip);
-    });
-
-    this.container.appendChild(section);
-  }
-
   renderCanvasSection(state) {
     const section = document.createElement('div');
     section.className = 'control-section';
     section.innerHTML = `
-      <div class="section-title">📐 0. Lienzo & Proporción</div>
+      <div class="section-title">📐 Lienzo & Proporción</div>
       <div class="control-group">
         <label class="control-label">Aspect Ratio</label>
         <div class="aspect-grid" id="aspect-ratio-buttons"></div>
-      </div>
-      <div class="control-group">
-        <label class="control-label">Paleta de Color</label>
-        <div class="palette-grid" id="palette-buttons"></div>
       </div>
     `;
 
@@ -102,60 +64,45 @@ export class UIManager {
       aspectContainer.appendChild(btn);
     }
 
-    const paletteContainer = section.querySelector('#palette-buttons');
-    for (const [palKey, pal] of Object.entries(PALETTES)) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = `palette-btn ${state.canvas.paletteId === palKey ? 'active' : ''}`;
-      
-      const swatches = pal.swatches.map(c => `<span style="background-color: ${c}"></span>`).join('');
-      btn.innerHTML = `
-        <div class="palette-colors">${swatches}</div>
-        <span class="palette-name">${pal.name}</span>
-      `;
-
-      btn.addEventListener('click', () => {
-        state.canvas.paletteId = palKey;
-        state.canvas.bgColor = pal.bg;
-        state.pattern.color = pal.line;
-        
-        if (state.differenceLayers.length > 0) {
-          state.differenceLayers.forEach((l, idx) => {
-            l.color = idx === 0 ? pal.accent1 : pal.accent2;
-          });
-        }
-
-        paletteContainer.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.notifyChange();
-      });
-      paletteContainer.appendChild(btn);
-    }
-
     this.container.appendChild(section);
   }
 
   renderCoreSection(state, engine) {
     const p = state.pattern;
-    if (!p.distribution) {
-      p.distribution = p.shape === 'line' ? 'linear' : 'radial';
-    }
-    if (p.angle === undefined) {
-      p.angle = 0;
-    }
+    if (!p.distribution) p.distribution = 'linear';
+    if (p.angle === undefined) p.angle = 0;
+    if (p.posX === undefined) p.posX = 50;
+    if (p.posY === undefined) p.posY = 50;
+    if (p.sizeX === undefined) p.sizeX = p.size || 500;
+    if (p.sizeY === undefined) p.sizeY = p.size || 380;
+    if (p.stepX === undefined) p.stepX = 0;
+    if (p.stepY === undefined) p.stepY = 35;
 
     const section = document.createElement('div');
     section.className = 'control-section';
 
-    let transformControlsHtml = '';
+    let repetitionControlsHtml = '';
 
     if (p.distribution === 'linear') {
       if (p.shape === 'line') {
-        transformControlsHtml = `
+        repetitionControlsHtml = `
           <div class="control-group">
             <div class="control-header">
-              <span class="control-label">Ángulo de Trama</span>
-              <span class="control-value" id="val-angle">${p.angle}°</span>
+              <label class="control-label" for="num-copies">Copias de Repetición</label>
+              <div class="control-input-wrapper">
+                <input type="number" id="num-copies" class="number-input" min="1" max="500" step="1" value="${p.copies}">
+              </div>
+            </div>
+            <input type="range" id="input-copies" min="1" max="500" step="1" value="${p.copies}">
+          </div>
+
+          <div class="control-group">
+            <div class="control-header">
+              <label class="control-label" for="num-angle">Ángulo de Trama</label>
+              <div class="control-input-wrapper">
+                <input type="number" id="num-angle" class="number-input" min="0" max="180" step="1" value="${p.angle}">
+                <span class="unit-tag">°</span>
+              </div>
             </div>
             <input type="range" id="input-angle" min="0" max="180" step="1" value="${p.angle}">
             <div class="quick-angle-buttons">
@@ -165,87 +112,124 @@ export class UIManager {
               <button type="button" class="btn-chip ${p.angle === 135 ? 'active' : ''}" data-angle="135">135° Diag</button>
             </div>
           </div>
-
-          <div class="control-group">
-            <div class="control-header">
-              <span class="control-label">Copias de Repetición (Densidad)</span>
-              <span class="control-value" id="val-copies">${p.copies}</span>
-            </div>
-            <input type="range" id="input-copies" min="5" max="500" step="5" value="${p.copies}">
-          </div>
         `;
       } else {
-        transformControlsHtml = `
+        // Figuras geométricas en repetición lineal: una debajo de la otra en vertical por defecto
+        repetitionControlsHtml = `
           <div class="control-group">
             <div class="control-header">
-              <span class="control-label">Copias de Repetición</span>
-              <span class="control-value" id="val-copies">${p.copies}</span>
+              <label class="control-label" for="num-copies">Copias de Repetición</label>
+              <div class="control-input-wrapper">
+                <input type="number" id="num-copies" class="number-input" min="1" max="300" step="1" value="${p.copies}">
+              </div>
             </div>
-            <input type="range" id="input-copies" min="5" max="300" step="5" value="${p.copies}">
-          </div>
-
-          <div class="control-group">
-            <div class="control-header">
-              <span class="control-label">Escala por Copia (%)</span>
-              <span class="control-value" id="val-scaleStep">${Math.round(p.scaleStep * 100)}%</span>
-            </div>
-            <input type="range" id="input-scaleStep" min="80" max="120" step="0.2" value="${(p.scaleStep * 100).toFixed(1)}">
-          </div>
-
-          <div class="control-group">
-            <div class="control-header">
-              <span class="control-label">Giro por Copia</span>
-              <span class="control-value" id="val-rotateStep">${p.rotateStep}°</span>
-            </div>
-            <input type="range" id="input-rotateStep" min="-45" max="45" step="0.5" value="${p.rotateStep}">
+            <input type="range" id="input-copies" min="1" max="300" step="1" value="${p.copies}">
           </div>
 
           <div class="dual-slider-row">
             <div class="control-group flex-1">
-              <span class="control-label-sm">Paso X: <span id="val-moveX">${p.moveX}px</span></span>
-              <input type="range" id="input-moveX" min="-30" max="30" step="0.5" value="${p.moveX}">
+              <div class="control-header">
+                <label class="control-label-sm" for="num-stepY">Paso Vertical</label>
+                <div class="control-input-wrapper">
+                  <input type="number" id="num-stepY" class="number-input" min="-150" max="150" step="1" value="${p.stepY}">
+                  <span class="unit-tag">px</span>
+                </div>
+              </div>
+              <input type="range" id="input-stepY" min="-150" max="150" step="1" value="${p.stepY}">
             </div>
             <div class="control-group flex-1">
-              <span class="control-label-sm">Paso Y: <span id="val-moveY">${p.moveY}px</span></span>
-              <input type="range" id="input-moveY" min="-30" max="30" step="0.5" value="${p.moveY}">
+              <div class="control-header">
+                <label class="control-label-sm" for="num-stepX">Paso Horizontal</label>
+                <div class="control-input-wrapper">
+                  <input type="number" id="num-stepX" class="number-input" min="-150" max="150" step="1" value="${p.stepX}">
+                  <span class="unit-tag">px</span>
+                </div>
+              </div>
+              <input type="range" id="input-stepX" min="-150" max="150" step="1" value="${p.stepX}">
+            </div>
+          </div>
+          <span class="sub-hint">Paso vertical > 0 apila las figuras una debajo de la otra en vertical</span>
+
+          <div class="dual-slider-row" style="margin-top: 0.35rem;">
+            <div class="control-group flex-1">
+              <div class="control-header">
+                <label class="control-label-sm" for="num-scaleStep">Escala %</label>
+                <div class="control-input-wrapper">
+                  <input type="number" id="num-scaleStep" class="number-input" min="70" max="130" step="0.5" value="${Math.round(p.scaleStep * 100)}">
+                  <span class="unit-tag">%</span>
+                </div>
+              </div>
+              <input type="range" id="input-scaleStep" min="70" max="130" step="0.5" value="${Math.round(p.scaleStep * 100)}">
+            </div>
+            <div class="control-group flex-1">
+              <div class="control-header">
+                <label class="control-label-sm" for="num-rotateStep">Giro °</label>
+                <div class="control-input-wrapper">
+                  <input type="number" id="num-rotateStep" class="number-input" min="-45" max="45" step="0.5" value="${p.rotateStep}">
+                  <span class="unit-tag">°</span>
+                </div>
+              </div>
+              <input type="range" id="input-rotateStep" min="-45" max="45" step="0.5" value="${p.rotateStep}">
             </div>
           </div>
         `;
       }
-    } else if (p.distribution === 'radial') {
-      transformControlsHtml = `
+    } else {
+      // Repetición Radial
+      repetitionControlsHtml = `
         <div class="control-group">
           <div class="control-header">
-            <span class="control-label">Copias de Repetición</span>
-            <span class="control-value" id="val-copies">${p.copies}</span>
+            <label class="control-label" for="num-copies">Copias de Repetición</label>
+            <div class="control-input-wrapper">
+              <input type="number" id="num-copies" class="number-input" min="2" max="800" step="1" value="${p.copies}">
+            </div>
           </div>
-          <input type="range" id="input-copies" min="5" max="800" step="5" value="${p.copies}">
-        </div>
-
-        <div class="control-group">
-          <div class="control-header">
-            <span class="control-label">Escala por Copia (%)</span>
-            <span class="control-value" id="val-scaleStep">${Math.round(p.scaleStep * 100)}%</span>
-          </div>
-          <input type="range" id="input-scaleStep" min="88" max="108" step="0.2" value="${(p.scaleStep * 100).toFixed(1)}">
-        </div>
-
-        <div class="control-group">
-          <div class="control-header">
-            <span class="control-label">Giro por Copia</span>
-            <span class="control-value" id="val-rotateStep">${p.rotateStep}°</span>
-          </div>
-          <input type="range" id="input-rotateStep" min="-25" max="25" step="0.2" value="${p.rotateStep}">
+          <input type="range" id="input-copies" min="2" max="800" step="1" value="${p.copies}">
         </div>
 
         <div class="dual-slider-row">
           <div class="control-group flex-1">
-            <span class="control-label-sm">Mover X: <span id="val-moveX">${p.moveX}px</span></span>
-            <input type="range" id="input-moveX" min="-12" max="12" step="0.5" value="${p.moveX}">
+            <div class="control-header">
+              <label class="control-label-sm" for="num-scaleStep">Escala %</label>
+              <div class="control-input-wrapper">
+                <input type="number" id="num-scaleStep" class="number-input" min="85" max="115" step="0.2" value="${(p.scaleStep * 100).toFixed(1)}">
+                <span class="unit-tag">%</span>
+              </div>
+            </div>
+            <input type="range" id="input-scaleStep" min="85" max="115" step="0.2" value="${(p.scaleStep * 100).toFixed(1)}">
           </div>
           <div class="control-group flex-1">
-            <span class="control-label-sm">Mover Y: <span id="val-moveY">${p.moveY}px</span></span>
-            <input type="range" id="input-moveY" min="-12" max="12" step="0.5" value="${p.moveY}">
+            <div class="control-header">
+              <label class="control-label-sm" for="num-rotateStep">Giro °</label>
+              <div class="control-input-wrapper">
+                <input type="number" id="num-rotateStep" class="number-input" min="-30" max="30" step="0.2" value="${p.rotateStep}">
+                <span class="unit-tag">°</span>
+              </div>
+            </div>
+            <input type="range" id="input-rotateStep" min="-30" max="30" step="0.2" value="${p.rotateStep}">
+          </div>
+        </div>
+
+        <div class="dual-slider-row">
+          <div class="control-group flex-1">
+            <div class="control-header">
+              <label class="control-label-sm" for="num-moveX">Mover X</label>
+              <div class="control-input-wrapper">
+                <input type="number" id="num-moveX" class="number-input" min="-20" max="20" step="0.5" value="${p.moveX}">
+                <span class="unit-tag">px</span>
+              </div>
+            </div>
+            <input type="range" id="input-moveX" min="-20" max="20" step="0.5" value="${p.moveX}">
+          </div>
+          <div class="control-group flex-1">
+            <div class="control-header">
+              <label class="control-label-sm" for="num-moveY">Mover Y</label>
+              <div class="control-input-wrapper">
+                <input type="number" id="num-moveY" class="number-input" min="-20" max="20" step="0.5" value="${p.moveY}">
+                <span class="unit-tag">px</span>
+              </div>
+            </div>
+            <input type="range" id="input-moveY" min="-20" max="20" step="0.5" value="${p.moveY}">
           </div>
         </div>
 
@@ -258,28 +242,17 @@ export class UIManager {
           </div>
         </div>
       `;
-    } else if (p.distribution === 'grid') {
-      transformControlsHtml = `
-        <div class="control-group">
-          <div class="control-header">
-            <span class="control-label">Copias / Densidad de Malla</span>
-            <span class="control-value" id="val-copies">${p.copies}</span>
-          </div>
-          <input type="range" id="input-copies" min="8" max="180" step="2" value="${p.copies}">
-          <span class="sub-hint">${p.shape === 'line' ? 'Trama ortogonal cruzada (líneas horizontales + verticales)' : 'Matriz 2D regular de figuras geométricas'}</span>
-        </div>
-      `;
     }
 
     section.innerHTML = `
-      <div class="section-title">🔷 1. Figura Base (La Semilla)</div>
+      <div class="section-title">🔷 1. Figura Base (Semilla)</div>
       
       <div class="control-group">
         <label class="control-label">Geometría Semilla</label>
         <div class="segmented-control" id="shape-control">
+          <button type="button" class="segmented-btn ${p.shape === 'line' ? 'active' : ''}" data-shape="line">Línea</button>
           <button type="button" class="segmented-btn ${p.shape === 'circle' ? 'active' : ''}" data-shape="circle">Círculo</button>
           <button type="button" class="segmented-btn ${p.shape === 'polygon' ? 'active' : ''}" data-shape="polygon">Polígono</button>
-          <button type="button" class="segmented-btn ${p.shape === 'line' ? 'active' : ''}" data-shape="line">Línea</button>
           <button type="button" class="segmented-btn ${p.shape === 'petal' ? 'active' : ''}" data-shape="petal">Pétalo</button>
         </div>
       </div>
@@ -295,75 +268,149 @@ export class UIManager {
         </div>
       </div>
 
+      <div class="dual-slider-row">
+        <div class="control-group flex-1">
+          <div class="control-header">
+            <label class="control-label-sm" for="num-posX">Posición X</label>
+            <div class="control-input-wrapper">
+              <input type="number" id="num-posX" class="number-input" min="0" max="100" step="1" value="${p.posX}">
+              <span class="unit-tag">%</span>
+            </div>
+          </div>
+          <input type="range" id="input-posX" min="0" max="100" step="1" value="${p.posX}">
+        </div>
+        <div class="control-group flex-1">
+          <div class="control-header">
+            <label class="control-label-sm" for="num-posY">Posición Y</label>
+            <div class="control-input-wrapper">
+              <input type="number" id="num-posY" class="number-input" min="0" max="100" step="1" value="${p.posY}">
+              <span class="unit-tag">%</span>
+            </div>
+          </div>
+          <input type="range" id="input-posY" min="0" max="100" step="1" value="${p.posY}">
+        </div>
+      </div>
+
+      ${p.shape === 'line' ? `
+      <div class="dual-slider-row">
+        <div class="control-group flex-1">
+          <div class="control-header">
+            <label class="control-label-sm" for="num-sizeX">Ancho Líneas</label>
+            <div class="control-input-wrapper">
+              <input type="number" id="num-sizeX" class="number-input" min="30" max="1400" step="10" value="${p.sizeX}">
+              <span class="unit-tag">px</span>
+            </div>
+          </div>
+          <input type="range" id="input-sizeX" min="30" max="1400" step="10" value="${p.sizeX}">
+        </div>
+        <div class="control-group flex-1">
+          <div class="control-header">
+            <label class="control-label-sm" for="num-sizeY">Alto / Cobertura</label>
+            <div class="control-input-wrapper">
+              <input type="number" id="num-sizeY" class="number-input" min="30" max="1400" step="10" value="${p.sizeY}">
+              <span class="unit-tag">px</span>
+            </div>
+          </div>
+          <input type="range" id="input-sizeY" min="30" max="1400" step="10" value="${p.sizeY}">
+        </div>
+      </div>
+      <span class="sub-hint">Rectángulo delimitador: pequeño (<400px) = Objeto central | grande (>800px) = Fondo sangrado</span>
+      ` : `
       <div class="control-group">
         <div class="control-header">
-          <span class="control-label">Tamaño Inicial (Radio / Sangrado)</span>
-          <span class="control-value" id="val-size">${p.size}px</span>
+          <label class="control-label" for="num-size">Tamaño Base (Radio)</label>
+          <div class="control-input-wrapper">
+            <input type="number" id="num-size" class="number-input" min="20" max="1000" step="5" value="${p.size}">
+            <span class="unit-tag">px</span>
+          </div>
         </div>
-        <input type="range" id="input-size" min="30" max="1100" step="10" value="${p.size}" title="Hazlo pequeño para objeto central, o grande para sangrado total como fondo">
-        <span class="sub-hint">Pequeño = Pieza central focal | Grande (>600px) = Sangrado como fondo</span>
+        <input type="range" id="input-size" min="20" max="1000" step="5" value="${p.size}">
       </div>
+      `}
 
-      <div class="section-title" style="margin-top: 0.8rem;">🔄 2. Distribución & Transformación</div>
+      <div class="section-title" style="margin-top: 0.8rem;">🔄 2. Repetición</div>
 
       <div class="control-group">
-        <label class="control-label">Modo de Distribución</label>
+        <label class="control-label">Tipo de Repetición</label>
         <div class="segmented-control" id="distribution-control">
-          <button type="button" class="segmented-btn ${p.distribution === 'linear' ? 'active' : ''}" data-dist="linear">Lineal (Trama)</button>
-          <button type="button" class="segmented-btn ${p.distribution === 'radial' ? 'active' : ''}" data-dist="radial">Radial (Concéntrico)</button>
-          <button type="button" class="segmented-btn ${p.distribution === 'grid' ? 'active' : ''}" data-dist="grid">Cuadrícula</button>
+          <button type="button" class="segmented-btn ${p.distribution === 'linear' ? 'active' : ''}" data-dist="linear">Lineal</button>
+          <button type="button" class="segmented-btn ${p.distribution === 'radial' ? 'active' : ''}" data-dist="radial">Radial</button>
         </div>
       </div>
 
-      ${transformControlsHtml}
+      ${repetitionControlsHtml}
 
       <div class="section-title" style="margin-top: 0.8rem;">🌾 3. Textura & Materia (UJI)</div>
 
       <div class="control-group">
         <div class="control-header">
-          <span class="control-label" style="color: #38bdf8;">Micro-corrugado (Jitter / Fibra)</span>
-          <span class="control-value" id="val-jitter">${(p.jitter || 0).toFixed(1)}px</span>
+          <label class="control-label" for="num-jitter">Micro-corrugado (Jitter / Fibra)</label>
+          <div class="control-input-wrapper">
+            <input type="number" id="num-jitter" class="number-input" min="0" max="8" step="0.1" value="${(p.jitter || 0).toFixed(1)}">
+            <span class="unit-tag">px</span>
+          </div>
         </div>
-        <input type="range" id="input-jitter" min="0" max="6" step="0.2" value="${p.jitter || 0}">
+        <input type="range" id="input-jitter" min="0" max="8" step="0.1" value="${p.jitter || 0}">
       </div>
 
       <div class="control-group">
         <div class="control-header">
-          <span class="control-label">Salto de Líneas (Respiración / Skip)</span>
-          <span class="control-value" id="val-skipChance">${p.skipChance || 0}%</span>
+          <label class="control-label" for="num-skipChance">Salto de Líneas (Respiración)</label>
+          <div class="control-input-wrapper">
+            <input type="number" id="num-skipChance" class="number-input" min="0" max="60" step="1" value="${p.skipChance || 0}">
+            <span class="unit-tag">%</span>
+          </div>
         </div>
-        <input type="range" id="input-skipChance" min="0" max="60" step="5" value="${p.skipChance || 0}">
+        <input type="range" id="input-skipChance" min="0" max="60" step="1" value="${p.skipChance || 0}">
       </div>
 
       <div class="control-group">
         <div class="control-header">
-          <span class="control-label">Cruce de Hebras (Deshilachado)</span>
-          <span class="control-value" id="val-lineSwappiness">${p.lineSwappiness || 0}%</span>
+          <label class="control-label" for="num-lineSwappiness">Cruce de Hebras (Deshilachado)</label>
+          <div class="control-input-wrapper">
+            <input type="number" id="num-lineSwappiness" class="number-input" min="0" max="60" step="1" value="${p.lineSwappiness || 0}">
+            <span class="unit-tag">%</span>
+          </div>
         </div>
-        <input type="range" id="input-lineSwappiness" min="0" max="60" step="5" value="${p.lineSwappiness || 0}">
+        <input type="range" id="input-lineSwappiness" min="0" max="60" step="1" value="${p.lineSwappiness || 0}">
       </div>
 
       <div class="control-group">
         <div class="control-header">
-          <span class="control-label">Ondulación Perimetral</span>
-          <span class="control-value" id="val-waviness">${p.waviness || 0}px</span>
+          <label class="control-label" for="num-waviness">Ondulación Perimetral</label>
+          <div class="control-input-wrapper">
+            <input type="number" id="num-waviness" class="number-input" min="0" max="30" step="1" value="${p.waviness || 0}">
+            <span class="unit-tag">px</span>
+          </div>
         </div>
-        <input type="range" id="input-waviness" min="0" max="25" step="1" value="${p.waviness || 0}">
+        <input type="range" id="input-waviness" min="0" max="30" step="1" value="${p.waviness || 0}">
       </div>
 
       <div class="dual-slider-row">
         <div class="control-group flex-1">
-          <span class="control-label-sm">Grosor: <span id="val-strokeWidth">${p.strokeWidth}px</span></span>
-          <input type="range" id="input-strokeWidth" min="0.2" max="4.0" step="0.1" value="${p.strokeWidth}">
+          <div class="control-header">
+            <label class="control-label-sm" for="num-strokeWidth">Grosor</label>
+            <div class="control-input-wrapper">
+              <input type="number" id="num-strokeWidth" class="number-input" min="0.2" max="6.0" step="0.1" value="${p.strokeWidth || 1.2}">
+              <span class="unit-tag">px</span>
+            </div>
+          </div>
+          <input type="range" id="input-strokeWidth" min="0.2" max="6.0" step="0.1" value="${p.strokeWidth || 1.2}">
         </div>
         <div class="control-group flex-1">
-          <span class="control-label-sm">Opacidad: <span id="val-opacity">${Math.round(p.opacity * 100)}%</span></span>
-          <input type="range" id="input-opacity" min="0.05" max="1.0" step="0.05" value="${p.opacity}">
+          <div class="control-header">
+            <label class="control-label-sm" for="num-opacity">Opacidad</label>
+            <div class="control-input-wrapper">
+              <input type="number" id="num-opacity" class="number-input" min="5" max="100" step="1" value="${Math.round((p.opacity || 0.9) * 100)}">
+              <span class="unit-tag">%</span>
+            </div>
+          </div>
+          <input type="range" id="input-opacity" min="5" max="100" step="1" value="${Math.round((p.opacity || 0.9) * 100)}">
         </div>
       </div>
     `;
 
-    // Forma base
+    // Selección de forma base
     const shapeBtns = section.querySelectorAll('#shape-control .segmented-btn');
     shapeBtns.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -384,7 +431,7 @@ export class UIManager {
       });
     });
 
-    // Modo de Distribución (Lineal, Radial, Cuadrícula)
+    // Modo de Repetición: Lineal vs Radial
     const distBtns = section.querySelectorAll('#distribution-control .segmented-btn');
     distBtns.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -394,7 +441,7 @@ export class UIManager {
       });
     });
 
-    // Ancla (si está visible en modo radial)
+    // Ancla (modo radial)
     const anchorBtns = section.querySelectorAll('#anchor-control .segmented-btn');
     anchorBtns.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -405,39 +452,61 @@ export class UIManager {
       });
     });
 
-    // Botones rápidos de Ángulo (si está visible en modo lineal para líneas)
+    // Botones rápidos de Ángulo (líneas en modo lineal)
     const angleChips = section.querySelectorAll('.quick-angle-buttons .btn-chip');
     const angleInput = section.querySelector('#input-angle');
-    const angleDisplay = section.querySelector('#val-angle');
+    const angleNum = section.querySelector('#num-angle');
     angleChips.forEach(chip => {
       chip.addEventListener('click', () => {
         const ang = parseFloat(chip.dataset.angle);
         p.angle = ang;
         if (angleInput) angleInput.value = ang;
-        if (angleDisplay) angleDisplay.textContent = `${ang}°`;
+        if (angleNum) angleNum.value = ang;
         angleChips.forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         this.notifyChange();
       });
     });
 
-    // Sliders
-    this.bindSlider(section, 'size', p, 'px', (v) => v);
-    this.bindSlider(section, 'angle', p, '°', (v) => {
-      angleChips.forEach(c => c.classList.toggle('active', parseFloat(c.dataset.angle) === v));
-      return v;
+    // Bindeo dual (Slider + Number input sincronizados para teclado y cursor)
+    this.bindControl(section, 'posX', p, '%', { min: 0, max: 100, step: 1 });
+    this.bindControl(section, 'posY', p, '%', { min: 0, max: 100, step: 1 });
+    this.bindControl(section, 'size', p, 'px', { min: 20, max: 1000, step: 5 });
+    this.bindControl(section, 'sizeX', p, 'px', { min: 30, max: 1400, step: 10 });
+    this.bindControl(section, 'sizeY', p, 'px', { min: 30, max: 1400, step: 10 });
+    this.bindControl(section, 'copies', p, '', { min: 1, max: 800, step: 1 });
+    this.bindControl(section, 'stepX', p, 'px', { min: -150, max: 150, step: 1 });
+    this.bindControl(section, 'stepY', p, 'px', { min: -150, max: 150, step: 1 });
+    this.bindControl(section, 'angle', p, '°', {
+      min: 0,
+      max: 180,
+      step: 1,
+      onUpdate: (v) => {
+        angleChips.forEach(c => c.classList.toggle('active', parseFloat(c.dataset.angle) === v));
+      }
     });
-    this.bindSlider(section, 'copies', p, '', (v) => v);
-    this.bindSlider(section, 'scaleStep', p, '%', (v) => v / 100);
-    this.bindSlider(section, 'rotateStep', p, '°', (v) => v);
-    this.bindSlider(section, 'moveX', p, 'px', (v) => v);
-    this.bindSlider(section, 'moveY', p, 'px', (v) => v);
-    this.bindSlider(section, 'jitter', p, 'px', (v) => v);
-    this.bindSlider(section, 'skipChance', p, '%', (v) => v);
-    this.bindSlider(section, 'lineSwappiness', p, '%', (v) => v);
-    this.bindSlider(section, 'waviness', p, 'px', (v) => v);
-    this.bindSlider(section, 'strokeWidth', p, 'px', (v) => v);
-    this.bindSlider(section, 'opacity', p, '', (v) => v);
+    this.bindControl(section, 'scaleStep', p, '%', {
+      min: 50,
+      max: 150,
+      step: 0.2,
+      transform: (v) => v / 100,
+      reverse: (v) => Math.round(v * 100)
+    });
+    this.bindControl(section, 'rotateStep', p, '°', { min: -45, max: 45, step: 0.2 });
+    this.bindControl(section, 'moveX', p, 'px', { min: -20, max: 20, step: 0.5 });
+    this.bindControl(section, 'moveY', p, 'px', { min: -20, max: 20, step: 0.5 });
+    this.bindControl(section, 'jitter', p, 'px', { min: 0, max: 8, step: 0.1 });
+    this.bindControl(section, 'skipChance', p, '%', { min: 0, max: 60, step: 1 });
+    this.bindControl(section, 'lineSwappiness', p, '%', { min: 0, max: 60, step: 1 });
+    this.bindControl(section, 'waviness', p, 'px', { min: 0, max: 30, step: 1 });
+    this.bindControl(section, 'strokeWidth', p, 'px', { min: 0.2, max: 6.0, step: 0.1 });
+    this.bindControl(section, 'opacity', p, '%', {
+      min: 5,
+      max: 100,
+      step: 1,
+      transform: (v) => v / 100,
+      reverse: (v) => Math.round(v * 100)
+    });
 
     this.container.appendChild(section);
   }
@@ -460,18 +529,24 @@ export class UIManager {
 
       <div class="control-group">
         <div class="control-header">
-          <span class="control-label">Radio del Pincel</span>
-          <span class="control-value" id="val-brushRadius">${state.brush.radius}px</span>
+          <label class="control-label" for="num-brushRadius">Radio del Pincel</label>
+          <div class="control-input-wrapper">
+            <input type="number" id="num-brushRadius" class="number-input" min="15" max="220" step="5" value="${state.brush.radius}">
+            <span class="unit-tag">px</span>
+          </div>
         </div>
-        <input type="range" id="input-brushRadius" min="25" max="160" step="5" value="${state.brush.radius}">
+        <input type="range" id="input-brushRadius" min="15" max="220" step="5" value="${state.brush.radius}">
       </div>
 
       <div class="control-group">
         <div class="control-header">
-          <span class="control-label">Fuerza de Deformación</span>
-          <span class="control-value" id="val-brushStrength">${state.brush.strength}px</span>
+          <label class="control-label" for="num-brushStrength">Fuerza de Deformación</label>
+          <div class="control-input-wrapper">
+            <input type="number" id="num-brushStrength" class="number-input" min="5" max="160" step="5" value="${state.brush.strength}">
+            <span class="unit-tag">px</span>
+          </div>
         </div>
-        <input type="range" id="input-brushStrength" min="10" max="120" step="5" value="${state.brush.strength}">
+        <input type="range" id="input-brushStrength" min="5" max="160" step="5" value="${state.brush.strength}">
       </div>
 
       <div class="sculpt-actions-bar">
@@ -489,8 +564,8 @@ export class UIManager {
       });
     });
 
-    this.bindSlider(section, 'brushRadius', state.brush, 'px', (v) => { state.brush.radius = v; return v; });
-    this.bindSlider(section, 'brushStrength', state.brush, 'px', (v) => { state.brush.strength = v; return v; });
+    this.bindControl(section, 'brushRadius', state.brush, 'px', { min: 15, max: 220, step: 5 });
+    this.bindControl(section, 'brushStrength', state.brush, 'px', { min: 5, max: 160, step: 5 });
 
     section.querySelector('#btn-undo').addEventListener('click', () => {
       if (this.onUndo) this.onUndo();
@@ -545,8 +620,8 @@ export class UIManager {
             <div class="control-group">
               <label class="control-label-sm">Profundidad</label>
               <div class="segmented-control seg-placement">
-                <button type="button" class="segmented-btn ${layer.placement === 'behind' ? 'active' : ''}" data-place="behind">Detrás de la Trama</button>
-                <button type="button" class="segmented-btn ${layer.placement === 'in-front' ? 'active' : ''}" data-place="in-front">Delante de la Trama</button>
+                <button type="button" class="segmented-btn ${layer.placement === 'behind' ? 'active' : ''}" data-place="behind">Detrás</button>
+                <button type="button" class="segmented-btn ${layer.placement === 'in-front' ? 'active' : ''}" data-place="in-front">Delante</button>
               </div>
             </div>
 
@@ -559,91 +634,142 @@ export class UIManager {
 
             <div class="control-group">
               <div class="control-header">
-                <span class="control-label-sm">Tamaño</span>
-                <span class="control-value-sm val-size">${layer.size}px</span>
+                <label class="control-label-sm">Tamaño</label>
+                <div class="control-input-wrapper">
+                  <input type="number" class="number-input input-num-size" min="30" max="400" step="5" value="${layer.size}">
+                  <span class="unit-tag">px</span>
+                </div>
               </div>
-              <input type="range" class="input-size" min="30" max="360" step="5" value="${layer.size}">
+              <input type="range" class="input-size" min="30" max="400" step="5" value="${layer.size}">
             </div>
 
             <div class="dual-slider-row">
               <div class="control-group flex-1">
-                <span class="control-label-sm">Posición X: <span class="val-x">${layer.x}%</span></span>
+                <div class="control-header">
+                  <label class="control-label-sm">Pos X</label>
+                  <div class="control-input-wrapper">
+                    <input type="number" class="number-input input-num-x" min="5" max="95" step="1" value="${layer.x}">
+                    <span class="unit-tag">%</span>
+                  </div>
+                </div>
                 <input type="range" class="input-x" min="5" max="95" step="1" value="${layer.x}">
               </div>
               <div class="control-group flex-1">
-                <span class="control-label-sm">Posición Y: <span class="val-y">${layer.y}%</span></span>
+                <div class="control-header">
+                  <label class="control-label-sm">Pos Y</label>
+                  <div class="control-input-wrapper">
+                    <input type="number" class="number-input input-num-y" min="5" max="95" step="1" value="${layer.y}">
+                    <span class="unit-tag">%</span>
+                  </div>
+                </div>
                 <input type="range" class="input-y" min="5" max="95" step="1" value="${layer.y}">
               </div>
             </div>
           </div>
         `;
 
-        card.querySelector('.btn-remove-layer').addEventListener('click', () => {
-          state.differenceLayers.splice(idx, 1);
-          this.renderDifferenceSection(state);
-          this.notifyChange();
-        });
-
+        // Bindeo de capa
         const segTypes = card.querySelectorAll('.seg-type .segmented-btn');
         segTypes.forEach(btn => {
           btn.addEventListener('click', () => {
+            segTypes.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
             layer.type = btn.dataset.type;
             this.renderDifferenceSection(state);
             this.notifyChange();
           });
         });
 
-        const segPlacements = card.querySelectorAll('.seg-placement .segmented-btn');
-        segPlacements.forEach(btn => {
+        const segPlace = card.querySelectorAll('.seg-placement .segmented-btn');
+        segPlace.forEach(btn => {
           btn.addEventListener('click', () => {
-            segPlacements.forEach(b => b.classList.remove('active'));
+            segPlace.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             layer.placement = btn.dataset.place;
             this.notifyChange();
           });
         });
 
-        const textInput = card.querySelector('.text-input');
-        if (textInput) {
-          textInput.addEventListener('input', (e) => {
+        const textIn = card.querySelector('.text-input');
+        if (textIn) {
+          textIn.addEventListener('input', (e) => {
             layer.text = e.target.value;
             this.notifyChange();
           });
         }
 
-        const sizeInput = card.querySelector('.input-size');
-        const sizeVal = card.querySelector('.val-size');
-        sizeInput.addEventListener('input', (e) => {
-          layer.size = parseInt(e.target.value, 10);
-          sizeVal.textContent = `${layer.size}px`;
-          this.notifyChange();
-        });
+        const sizeSlider = card.querySelector('.input-size');
+        const sizeNum = card.querySelector('.input-num-size');
+        if (sizeSlider && sizeNum) {
+          sizeSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            layer.size = val;
+            sizeNum.value = val;
+            this.notifyChange();
+          });
+          sizeNum.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            if (!Number.isNaN(val)) {
+              layer.size = val;
+              sizeSlider.value = val;
+              this.notifyChange();
+            }
+          });
+        }
 
-        const xInput = card.querySelector('.input-x');
-        const xVal = card.querySelector('.val-x');
-        xInput.addEventListener('input', (e) => {
-          layer.x = parseInt(e.target.value, 10);
-          xVal.textContent = `${layer.x}%`;
-          this.notifyChange();
-        });
+        const xSlider = card.querySelector('.input-x');
+        const xNum = card.querySelector('.input-num-x');
+        if (xSlider && xNum) {
+          xSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            layer.x = val;
+            xNum.value = val;
+            this.notifyChange();
+          });
+          xNum.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            if (!Number.isNaN(val)) {
+              layer.x = val;
+              xSlider.value = val;
+              this.notifyChange();
+            }
+          });
+        }
 
-        const yInput = card.querySelector('.input-y');
-        const yVal = card.querySelector('.val-y');
-        yInput.addEventListener('input', (e) => {
-          layer.y = parseInt(e.target.value, 10);
-          yVal.textContent = `${layer.y}%`;
+        const ySlider = card.querySelector('.input-y');
+        const yNum = card.querySelector('.input-num-y');
+        if (ySlider && yNum) {
+          ySlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            layer.y = val;
+            yNum.value = val;
+            this.notifyChange();
+          });
+          yNum.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            if (!Number.isNaN(val)) {
+              layer.y = val;
+              ySlider.value = val;
+              this.notifyChange();
+            }
+          });
+        }
+
+        card.querySelector('.btn-remove-layer').addEventListener('click', () => {
+          state.differenceLayers.splice(idx, 1);
+          this.renderDifferenceSection(state);
           this.notifyChange();
+          UIManager.showToast('Capa eliminada');
         });
 
         list.appendChild(card);
       });
     }
 
-    const btnAdd = section.querySelector('#btn-add-diff');
-    if (btnAdd) {
-      btnAdd.addEventListener('click', () => {
+    const addBtn = section.querySelector('#btn-add-diff');
+    if (addBtn) {
+      addBtn.addEventListener('click', () => {
         if (state.differenceLayers.length >= maxLayers) return;
-        const pal = PALETTES[state.canvas.paletteId] || PALETTES.petrol;
         const newLayer = {
           id: `diff-${Date.now()}`,
           name: `Elemento ${state.differenceLayers.length + 1}`,
@@ -652,8 +778,8 @@ export class UIManager {
           placement: 'behind',
           x: 50,
           y: 50,
-          size: 100,
-          color: state.differenceLayers.length === 0 ? pal.accent1 : pal.accent2,
+          size: 110,
+          color: '#27272a',
           opacity: 0.9,
           blendMode: 'normal'
         };
@@ -667,16 +793,44 @@ export class UIManager {
     this.container.appendChild(section);
   }
 
-  bindSlider(container, key, targetObj, unit, transform) {
-    const input = container.querySelector(`#input-${key}`);
-    const display = container.querySelector(`#val-${key}`);
-    if (input && display) {
-      input.addEventListener('input', (e) => {
+  /**
+   * Bindeo dual para controles numéricos: Slider (Range) + Teclado (Number Input)
+   */
+  bindControl(container, key, targetObj, unit = '', options = {}) {
+    const rangeInput = container.querySelector(`#input-${key}`);
+    const numInput = container.querySelector(`#num-${key}`);
+    const transform = options.transform || ((v) => v);
+    const reverse = options.reverse || ((v) => v);
+
+    if (rangeInput) {
+      rangeInput.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
+        if (Number.isNaN(val)) return;
         targetObj[key] = transform(val);
-        display.textContent = `${val}${unit}`;
+        if (numInput) {
+          numInput.value = val;
+        }
+        if (options.onUpdate) options.onUpdate(val);
         this.notifyChange();
       });
+    }
+
+    if (numInput) {
+      const handleNum = (e) => {
+        let val = parseFloat(e.target.value);
+        if (Number.isNaN(val)) return;
+        if (options.min !== undefined && val < options.min) val = options.min;
+        if (options.max !== undefined && val > options.max) val = options.max;
+        targetObj[key] = transform(val);
+        if (rangeInput) {
+          rangeInput.value = reverse(val);
+        }
+        if (options.onUpdate) options.onUpdate(val);
+        this.notifyChange();
+      };
+
+      numInput.addEventListener('input', handleNum);
+      numInput.addEventListener('change', handleNum);
     }
   }
 
