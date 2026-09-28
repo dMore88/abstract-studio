@@ -389,6 +389,39 @@ input[type="range"]:hover::-webkit-slider-thumb {
   background-color: rgba(56, 189, 248, 0.08);
 }
 
+/* Quick angle buttons */
+.quick-angle-buttons {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.btn-chip {
+  flex: 1;
+  padding: 0.32rem 0.2rem;
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.btn-chip:hover {
+  color: var(--text-main);
+  border-color: var(--border-hover);
+}
+
+.btn-chip.active {
+  background-color: rgba(56, 189, 248, 0.14);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 /* Sculpt Actions Bar */
 .sculpt-actions-bar {
   display: flex;

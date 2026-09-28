@@ -31,7 +31,7 @@ export class UIManager {
     this.renderCanvasSection(state);
 
     // 1. Figura Base & 2. Transformación & 3. Textura
-    this.renderCoreSection(state);
+    this.renderCoreSection(state, engine);
 
     // 4. Esculpido Directo
     this.renderSculptSection(state, engine);
@@ -135,11 +135,142 @@ export class UIManager {
     this.container.appendChild(section);
   }
 
-  renderCoreSection(state) {
+  renderCoreSection(state, engine) {
     const p = state.pattern;
+    if (!p.distribution) {
+      p.distribution = p.shape === 'line' ? 'linear' : 'radial';
+    }
+    if (p.angle === undefined) {
+      p.angle = 0;
+    }
 
     const section = document.createElement('div');
     section.className = 'control-section';
+
+    let transformControlsHtml = '';
+
+    if (p.distribution === 'linear') {
+      if (p.shape === 'line') {
+        transformControlsHtml = `
+          <div class="control-group">
+            <div class="control-header">
+              <span class="control-label">Ángulo de Trama</span>
+              <span class="control-value" id="val-angle">${p.angle}°</span>
+            </div>
+            <input type="range" id="input-angle" min="0" max="180" step="1" value="${p.angle}">
+            <div class="quick-angle-buttons">
+              <button type="button" class="btn-chip ${p.angle === 0 ? 'active' : ''}" data-angle="0">0° Horiz</button>
+              <button type="button" class="btn-chip ${p.angle === 90 ? 'active' : ''}" data-angle="90">90° Vert</button>
+              <button type="button" class="btn-chip ${p.angle === 45 ? 'active' : ''}" data-angle="45">45° Diag</button>
+              <button type="button" class="btn-chip ${p.angle === 135 ? 'active' : ''}" data-angle="135">135° Diag</button>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="control-header">
+              <span class="control-label">Copias de Repetición (Densidad)</span>
+              <span class="control-value" id="val-copies">${p.copies}</span>
+            </div>
+            <input type="range" id="input-copies" min="5" max="500" step="5" value="${p.copies}">
+          </div>
+        `;
+      } else {
+        transformControlsHtml = `
+          <div class="control-group">
+            <div class="control-header">
+              <span class="control-label">Copias de Repetición</span>
+              <span class="control-value" id="val-copies">${p.copies}</span>
+            </div>
+            <input type="range" id="input-copies" min="5" max="300" step="5" value="${p.copies}">
+          </div>
+
+          <div class="control-group">
+            <div class="control-header">
+              <span class="control-label">Escala por Copia (%)</span>
+              <span class="control-value" id="val-scaleStep">${Math.round(p.scaleStep * 100)}%</span>
+            </div>
+            <input type="range" id="input-scaleStep" min="80" max="120" step="0.2" value="${(p.scaleStep * 100).toFixed(1)}">
+          </div>
+
+          <div class="control-group">
+            <div class="control-header">
+              <span class="control-label">Giro por Copia</span>
+              <span class="control-value" id="val-rotateStep">${p.rotateStep}°</span>
+            </div>
+            <input type="range" id="input-rotateStep" min="-45" max="45" step="0.5" value="${p.rotateStep}">
+          </div>
+
+          <div class="dual-slider-row">
+            <div class="control-group flex-1">
+              <span class="control-label-sm">Paso X: <span id="val-moveX">${p.moveX}px</span></span>
+              <input type="range" id="input-moveX" min="-30" max="30" step="0.5" value="${p.moveX}">
+            </div>
+            <div class="control-group flex-1">
+              <span class="control-label-sm">Paso Y: <span id="val-moveY">${p.moveY}px</span></span>
+              <input type="range" id="input-moveY" min="-30" max="30" step="0.5" value="${p.moveY}">
+            </div>
+          </div>
+        `;
+      }
+    } else if (p.distribution === 'radial') {
+      transformControlsHtml = `
+        <div class="control-group">
+          <div class="control-header">
+            <span class="control-label">Copias de Repetición</span>
+            <span class="control-value" id="val-copies">${p.copies}</span>
+          </div>
+          <input type="range" id="input-copies" min="5" max="800" step="5" value="${p.copies}">
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <span class="control-label">Escala por Copia (%)</span>
+            <span class="control-value" id="val-scaleStep">${Math.round(p.scaleStep * 100)}%</span>
+          </div>
+          <input type="range" id="input-scaleStep" min="88" max="108" step="0.2" value="${(p.scaleStep * 100).toFixed(1)}">
+        </div>
+
+        <div class="control-group">
+          <div class="control-header">
+            <span class="control-label">Giro por Copia</span>
+            <span class="control-value" id="val-rotateStep">${p.rotateStep}°</span>
+          </div>
+          <input type="range" id="input-rotateStep" min="-25" max="25" step="0.2" value="${p.rotateStep}">
+        </div>
+
+        <div class="dual-slider-row">
+          <div class="control-group flex-1">
+            <span class="control-label-sm">Mover X: <span id="val-moveX">${p.moveX}px</span></span>
+            <input type="range" id="input-moveX" min="-12" max="12" step="0.5" value="${p.moveX}">
+          </div>
+          <div class="control-group flex-1">
+            <span class="control-label-sm">Mover Y: <span id="val-moveY">${p.moveY}px</span></span>
+            <input type="range" id="input-moveY" min="-12" max="12" step="0.5" value="${p.moveY}">
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label-sm">Punto de Ancla (Eje)</label>
+          <div class="segmented-control" id="anchor-control">
+            <button type="button" class="segmented-btn ${p.anchor === 'center' ? 'active' : ''}" data-anchor="center">Centro</button>
+            <button type="button" class="segmented-btn ${p.anchor === 'bottom' ? 'active' : ''}" data-anchor="bottom">Base Excéntrica</button>
+            <button type="button" class="segmented-btn ${p.anchor === 'side' ? 'active' : ''}" data-anchor="side">Lateral</button>
+          </div>
+        </div>
+      `;
+    } else if (p.distribution === 'grid') {
+      transformControlsHtml = `
+        <div class="control-group">
+          <div class="control-header">
+            <span class="control-label">Copias / Densidad de Malla</span>
+            <span class="control-value" id="val-copies">${p.copies}</span>
+          </div>
+          <input type="range" id="input-copies" min="8" max="180" step="2" value="${p.copies}">
+          <span class="sub-hint">${p.shape === 'line' ? 'Trama ortogonal cruzada (líneas horizontales + verticales)' : 'Matriz 2D regular de figuras geométricas'}</span>
+        </div>
+      `;
+    }
+
     section.innerHTML = `
       <div class="section-title">🔷 1. Figura Base (La Semilla)</div>
       
@@ -173,51 +304,18 @@ export class UIManager {
         <span class="sub-hint">Pequeño = Pieza central focal | Grande (>600px) = Sangrado como fondo</span>
       </div>
 
-      <div class="section-title" style="margin-top: 0.8rem;">🔄 2. Transformación Acumulativa (Illustrator)</div>
+      <div class="section-title" style="margin-top: 0.8rem;">🔄 2. Distribución & Transformación</div>
 
       <div class="control-group">
-        <div class="control-header">
-          <span class="control-label">Copias de Repetición</span>
-          <span class="control-value" id="val-copies">${p.copies}</span>
-        </div>
-        <input type="range" id="input-copies" min="5" max="800" step="5" value="${p.copies}">
-      </div>
-
-      <div class="control-group">
-        <div class="control-header">
-          <span class="control-label">Escala por Copia (%)</span>
-          <span class="control-value" id="val-scaleStep">${Math.round(p.scaleStep * 100)}%</span>
-        </div>
-        <input type="range" id="input-scaleStep" min="88" max="108" step="0.2" value="${(p.scaleStep * 100).toFixed(1)}">
-      </div>
-
-      <div class="control-group">
-        <div class="control-header">
-          <span class="control-label">Giro por Copia</span>
-          <span class="control-value" id="val-rotateStep">${p.rotateStep}°</span>
-        </div>
-        <input type="range" id="input-rotateStep" min="-25" max="25" step="0.2" value="${p.rotateStep}">
-      </div>
-
-      <div class="dual-slider-row">
-        <div class="control-group flex-1">
-          <span class="control-label-sm">Mover X: <span id="val-moveX">${p.moveX}px</span></span>
-          <input type="range" id="input-moveX" min="-12" max="12" step="0.5" value="${p.moveX}">
-        </div>
-        <div class="control-group flex-1">
-          <span class="control-label-sm">Mover Y: <span id="val-moveY">${p.moveY}px</span></span>
-          <input type="range" id="input-moveY" min="-12" max="12" step="0.5" value="${p.moveY}">
+        <label class="control-label">Modo de Distribución</label>
+        <div class="segmented-control" id="distribution-control">
+          <button type="button" class="segmented-btn ${p.distribution === 'linear' ? 'active' : ''}" data-dist="linear">Lineal (Trama)</button>
+          <button type="button" class="segmented-btn ${p.distribution === 'radial' ? 'active' : ''}" data-dist="radial">Radial (Concéntrico)</button>
+          <button type="button" class="segmented-btn ${p.distribution === 'grid' ? 'active' : ''}" data-dist="grid">Cuadrícula</button>
         </div>
       </div>
 
-      <div class="control-group">
-        <label class="control-label-sm">Punto de Ancla (Eje)</label>
-        <div class="segmented-control" id="anchor-control">
-          <button type="button" class="segmented-btn ${p.anchor === 'center' ? 'active' : ''}" data-anchor="center">Centro</button>
-          <button type="button" class="segmented-btn ${p.anchor === 'bottom' ? 'active' : ''}" data-anchor="bottom">Base Excéntrica</button>
-          <button type="button" class="segmented-btn ${p.anchor === 'side' ? 'active' : ''}" data-anchor="side">Lateral</button>
-        </div>
-      </div>
+      ${transformControlsHtml}
 
       <div class="section-title" style="margin-top: 0.8rem;">🌾 3. Textura & Materia (UJI)</div>
 
@@ -265,15 +363,12 @@ export class UIManager {
       </div>
     `;
 
-    // Forma
+    // Forma base
     const shapeBtns = section.querySelectorAll('#shape-control .segmented-btn');
-    const polyGroup = section.querySelector('#polygon-sides-group');
     shapeBtns.forEach(btn => {
       btn.addEventListener('click', () => {
-        shapeBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
         p.shape = btn.dataset.shape;
-        polyGroup.style.display = p.shape === 'polygon' ? 'flex' : 'none';
+        this.render(state, engine);
         this.notifyChange();
       });
     });
@@ -289,7 +384,17 @@ export class UIManager {
       });
     });
 
-    // Ancla
+    // Modo de Distribución (Lineal, Radial, Cuadrícula)
+    const distBtns = section.querySelectorAll('#distribution-control .segmented-btn');
+    distBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        p.distribution = btn.dataset.dist;
+        this.render(state, engine);
+        this.notifyChange();
+      });
+    });
+
+    // Ancla (si está visible en modo radial)
     const anchorBtns = section.querySelectorAll('#anchor-control .segmented-btn');
     anchorBtns.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -300,8 +405,28 @@ export class UIManager {
       });
     });
 
+    // Botones rápidos de Ángulo (si está visible en modo lineal para líneas)
+    const angleChips = section.querySelectorAll('.quick-angle-buttons .btn-chip');
+    const angleInput = section.querySelector('#input-angle');
+    const angleDisplay = section.querySelector('#val-angle');
+    angleChips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        const ang = parseFloat(chip.dataset.angle);
+        p.angle = ang;
+        if (angleInput) angleInput.value = ang;
+        if (angleDisplay) angleDisplay.textContent = `${ang}°`;
+        angleChips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        this.notifyChange();
+      });
+    });
+
     // Sliders
     this.bindSlider(section, 'size', p, 'px', (v) => v);
+    this.bindSlider(section, 'angle', p, '°', (v) => {
+      angleChips.forEach(c => c.classList.toggle('active', parseFloat(c.dataset.angle) === v));
+      return v;
+    });
     this.bindSlider(section, 'copies', p, '', (v) => v);
     this.bindSlider(section, 'scaleStep', p, '%', (v) => v / 100);
     this.bindSlider(section, 'rotateStep', p, '°', (v) => v);

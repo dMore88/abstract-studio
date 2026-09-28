@@ -1,10 +1,7 @@
 /**
  * Motor de Renderizado Vectorial para Abstract Studio
- * Integra:
- * 1. Figura Base (con tamaño desde pieza central hasta sangrado total de fondo)
- * 2. Transformación acumulativa (estilo Illustrator)
- * 3. Textura y materia (Jitter, Skip Chance y Line Swappiness estilo UJI)
- * 4. Esculpido manual directo con el cursor
+ * Soporta Distribución Lineal (Trama/Cuadrícula) y Radial/Concéntrica,
+ * con transformación acumulativa (estilo Illustrator) y textura analógica (estilo UJI).
  */
 
 export const ASPECT_RATIOS = {
@@ -59,7 +56,7 @@ export class AbstractEngine {
       .map(l => this.renderDifferenceElement(l, bounds))
       .join('\n');
 
-    // 2. Capa 1: Geometría Transformada, Textura y Deformaciones
+    // 2. Capa Principal: Geometría, Distribución (Lineal o Radial), Textura y Esculpido
     const patternSvg = this.renderCoreGeometry(state.pattern, bounds);
 
     // 3. Capas de diferencia (Encima de la trama)
@@ -101,19 +98,359 @@ export class AbstractEngine {
   }
 
   /**
-   * Renderiza el motor iterativo central (Figura base + Transformaciones + Textura)
+   * Enruta la generación según el Modo de Distribución (Lineal, Radial o Cuadrícula)
    */
   renderCoreGeometry(config, bounds) {
+    const distribution = config.distribution || 'linear';
+
+    if (distribution === 'radial') {
+      return this.renderRadialDistribution(config, bounds);
+    } else if (distribution === 'grid') {
+      if (config.shape === 'line') {
+        const hConfig = { ...config, angle: 0 };
+        const vConfig = { ...config, angle: 90 };
+        return this.renderLinearLines(hConfig, bounds) + '\n' + this.renderLinearLines(vConfig, bounds);
+      } else {
+        return this.renderGridShapes(config, bounds);
+      }
+    } else {
+      // Distribución Lineal
+      if (config.shape === 'line') {
+        return this.renderLinearLines(config, bounds);
+      } else {
+        return this.renderLinearShapes(config, bounds);
+      }
+    }
+  }
+
+  /**
+   * Modo Cuadrícula para Figuras Geométricas (Matriz 2D de círculos, polígonos, pétalos)
+   */
+  renderGridShapes(config, bounds) {
     const { width, height } = bounds;
-    
-    // Parámetros de Figura Base
+    const copies = parseInt(config.copies, 10) || 36;
+    const cols = Math.max(2, Math.ceil(Math.sqrt(copies)));
+    const rows = Math.max(2, Math.ceil(copies / cols));
+    const padX = width * 0.12;
+    const padY = height * 0.12;
+    const stepX = (width - 2 * padX) / Math.max(1, cols - 1);
+    const stepY = (height - 2 * padY) / Math.max(1, rows - 1);
+    const cellSize = Math.min(stepX, stepY) * 0.42;
+
+    const jitter = parseFloat(config.jitter) || 0;
+    const skipChance = (parseFloat(config.skipChance) || 0) / 100;
+    const strokeWidth = parseFloat(config.strokeWidth) || 1.2;
+    const baseOpacity = parseFloat(config.opacity) || 0.85;
+    const lineColor = config.color || '#a5f3fc';
+
+    const paths = [];
+    let count = 0;
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (count >= copies) break;
+        const cellCx = padX + c * stepX;
+        const cellCy = padY + r * stepY;
+        const rawShape = this.createSeedVertices(config.shape, config.polygonSides, cellSize, cellCx, cellCy, bounds);
+        const numVerts = rawShape.length;
+
+        let d = '';
+        let isDrawing = false;
+
+        for (let v = 0; v < numVerts; v++) {
+          let x = rawShape[v].x;
+          let y = rawShape[v].y;
+
+          if (jitter > 0) {
+            x += (Math.sin(count * 17.1 + v * 53.7) * 0.5) * jitter;
+            y += (Math.cos(count * 29.8 + v * 19.3) * 0.5) * jitter;
+          }
+
+          // Deformaciones
+          for (const def of this.deformations) {
+            const dx = x - def.x;
+            const dy = y - def.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < def.radius) {
+              const factor = Math.max(0, 1 - dist / def.radius);
+              if (def.mode === 'peak') {
+                y -= def.strength * factor;
+              } else if (def.mode === 'smooth') {
+                y -= def.strength * 0.5 * (1 + Math.cos((Math.PI * dist) / def.radius));
+              } else if (def.mode === 'twist') {
+                const swirl = (factor * Math.PI * def.strength) / 25;
+                const curDist = Math.hypot(dx, dy);
+                const curAngle = Math.atan2(dy, dx) + swirl;
+                x = def.x + Math.cos(curAngle) * curDist;
+                y = def.y + Math.sin(curAngle) * curDist;
+              }
+            }
+          }
+
+          const skipHash = Math.abs(Math.sin(count * 43.1 + v * 97.7));
+          if (skipChance > 0 && skipHash < skipChance) {
+            isDrawing = false;
+            continue;
+          }
+
+          const vx = x.toFixed(1);
+          const vy = y.toFixed(1);
+          if (!isDrawing) {
+            d += ` M ${vx} ${vy}`;
+            isDrawing = true;
+          } else {
+            d += ` L ${vx} ${vy}`;
+          }
+        }
+
+        if (isDrawing && config.shape !== 'line' && skipChance === 0) d += ' Z';
+        if (d.trim().length > 0) {
+          paths.push(`<path d="${d}" fill="none" stroke="${lineColor}" stroke-width="${strokeWidth}" stroke-opacity="${baseOpacity}" stroke-linecap="round" stroke-linejoin="round" />`);
+        }
+        count++;
+      }
+    }
+
+    return paths.join('\n    ');
+  }
+
+  /**
+   * Modo Lineal: Trama de Líneas Paralelas de borde a borde (con rotación, textura UJI y esculpido)
+   */
+  renderLinearLines(config, bounds) {
+    const { width, height } = bounds;
+    const copies = parseInt(config.copies, 10) || 48;
+    const angleDeg = parseFloat(config.angle || 0);
+    const strokeWidth = parseFloat(config.strokeWidth) || 1.2;
+    const baseOpacity = parseFloat(config.opacity) || 0.85;
+    const baseWave = parseFloat(config.waviness) || 0;
+    const jitter = parseFloat(config.jitter) || 0;
+    const skipChance = (parseFloat(config.skipChance) || 0) / 100;
+    const swappiness = (parseFloat(config.lineSwappiness) || 0) / 100;
+    const lineColor = config.color || '#a5f3fc';
+
+    const cx = width / 2;
+    const cy = height / 2;
+    const rad = (angleDeg * Math.PI) / 180;
+    const cosA = Math.cos(rad);
+    const sinA = Math.sin(rad);
+
+    const diag = Math.hypot(width, height) * 1.05;
+    const lineSpacing = diag / (copies + 1);
+    const numPointsPerLine = 130;
+    const stepT = diag / (numPointsPerLine - 1);
+    const halfDiag = diag / 2;
+
+    const paths = [];
+
+    for (let l = 0; l < copies; l++) {
+      const lineOffset = -halfDiag + (l + 1) * lineSpacing;
+      let verts = [];
+
+      for (let p = 0; p < numPointsPerLine; p++) {
+        const t = -halfDiag + p * stepT;
+        let u = t;
+        let v = lineOffset;
+
+        if (baseWave > 0) {
+          const normP = p / numPointsPerLine;
+          v += Math.sin(normP * Math.PI * 4 + l * 0.25) * (baseWave * 0.7);
+        }
+
+        let x = cx + u * cosA - v * sinA;
+        let y = cy + u * sinA + v * cosA;
+
+        // Textura analógica de Micro-corrugado / Jitter
+        if (jitter > 0) {
+          x += (Math.sin(l * 13.1 + p * 37.3) * 0.5) * jitter;
+          y += (Math.cos(l * 29.7 + p * 19.1) * 0.5) * jitter;
+        }
+
+        // Deformaciones manuales esculpidas con el cursor
+        for (const def of this.deformations) {
+          const dx = x - def.x;
+          const dy = y - def.y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist < def.radius) {
+            const factor = Math.max(0, 1 - dist / def.radius);
+            if (def.mode === 'peak') {
+              x -= sinA * def.strength * factor;
+              y -= cosA * def.strength * factor;
+            } else if (def.mode === 'smooth') {
+              const smoothFactor = 0.5 * (1 + Math.cos((Math.PI * dist) / def.radius));
+              x -= sinA * def.strength * smoothFactor;
+              y -= cosA * def.strength * smoothFactor;
+            } else if (def.mode === 'twist') {
+              const swirl = (factor * Math.PI * def.strength) / 30;
+              const curDist = Math.hypot(dx, dy);
+              const curAngle = Math.atan2(dy, dx) + swirl;
+              x = def.x + Math.cos(curAngle) * curDist;
+              y = def.y + Math.sin(curAngle) * curDist;
+            } else if (def.mode === 'flatten') {
+              const nominalX = cx + u * cosA - lineOffset * sinA;
+              const nominalY = cy + u * sinA + lineOffset * cosA;
+              x = x * (1 - factor) + nominalX * factor;
+              y = y * (1 - factor) + nominalY * factor;
+            }
+          }
+        }
+
+        verts.push({ x, y });
+      }
+
+      // Swappiness / Cruce de hebras
+      if (swappiness > 0) {
+        const swapCount = Math.floor(numPointsPerLine * swappiness * 0.15);
+        for (let s = 0; s < swapCount; s++) {
+          const idxA = Math.floor(Math.abs(Math.sin(l * 9.1 + s * 3.7)) * numPointsPerLine) % numPointsPerLine;
+          const idxB = (idxA + 2 + Math.floor(Math.abs(Math.cos(l * 5.3 + s * 7.1)) * 4)) % numPointsPerLine;
+          const temp = verts[idxA];
+          verts[idxA] = verts[idxB];
+          verts[idxB] = temp;
+        }
+      }
+
+      // Trazado con soporte de Skip Chance
+      let d = '';
+      let isDrawing = false;
+      for (let p = 0; p < numPointsPerLine; p++) {
+        const skipHash = Math.abs(Math.sin(l * 43.1 + p * 97.7));
+        const shouldSkip = skipChance > 0 && skipHash < skipChance;
+
+        if (shouldSkip) {
+          isDrawing = false;
+          continue;
+        }
+
+        const vx = verts[p].x.toFixed(1);
+        const vy = verts[p].y.toFixed(1);
+
+        if (!isDrawing) {
+          d += ` M ${vx} ${vy}`;
+          isDrawing = true;
+        } else {
+          d += ` L ${vx} ${vy}`;
+        }
+      }
+
+      const op = (baseOpacity * 0.4 + 0.6 * (l / copies)).toFixed(2);
+      if (d.trim().length > 0) {
+        paths.push(`<path d="${d}" fill="none" stroke="${lineColor}" stroke-width="${strokeWidth}" stroke-opacity="${op}" stroke-linecap="round" stroke-linejoin="round" />`);
+      }
+    }
+
+    return paths.join('\n    ');
+  }
+
+  /**
+   * Modo Lineal para Figuras Geométricas (Repetición escalonada como Imagen 2 de Illustrator)
+   */
+  renderLinearShapes(config, bounds) {
+    const { width, height } = bounds;
+    const cx = (parseFloat(config.centerX || 50) / 100) * width;
+    const cy = (parseFloat(config.centerY || 50) / 100) * height;
+    const copies = parseInt(config.copies, 10) || 30;
+    const moveX = parseFloat(config.moveX || 8);
+    const moveY = parseFloat(config.moveY || 8);
+    const scaleFactor = parseFloat(config.scaleStep) || 1.0;
+    const rotateStep = (parseFloat(config.rotateStep) || 0) * (Math.PI / 180);
+    const jitter = parseFloat(config.jitter) || 0;
+    const skipChance = (parseFloat(config.skipChance) || 0) / 100;
+    const strokeWidth = parseFloat(config.strokeWidth) || 1.2;
+    const baseOpacity = parseFloat(config.opacity) || 0.8;
+    const lineColor = config.color || '#a5f3fc';
+
+    const rawShape = this.createSeedVertices(config.shape, config.polygonSides, parseFloat(config.size) || 120, cx, cy, bounds);
+    const numVerts = rawShape.length;
+    const paths = [];
+
+    const startX = cx - (copies * moveX) / 2;
+    const startY = cy - (copies * moveY) / 2;
+
+    for (let i = 0; i < copies; i++) {
+      const currentScale = Math.pow(scaleFactor, i - copies / 2);
+      const angle = i * rotateStep;
+      const ox = startX + i * moveX;
+      const oy = startY + i * moveY;
+
+      let d = '';
+      let isDrawing = false;
+
+      for (let v = 0; v < numVerts; v++) {
+        const pt = rawShape[v];
+        const rx = pt.x - cx;
+        const ry = pt.y - cy;
+
+        let x = ox + currentScale * (rx * Math.cos(angle) - ry * Math.sin(angle));
+        let y = oy + currentScale * (rx * Math.sin(angle) + ry * Math.cos(angle));
+
+        if (jitter > 0) {
+          x += (Math.sin(i * 17.1 + v * 53.7) * 0.5) * jitter;
+          y += (Math.cos(i * 29.8 + v * 19.3) * 0.5) * jitter;
+        }
+
+        // Deformaciones
+        for (const def of this.deformations) {
+          const dx = x - def.x;
+          const dy = y - def.y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist < def.radius) {
+            const factor = Math.max(0, 1 - dist / def.radius);
+            if (def.mode === 'peak') {
+              y -= def.strength * factor;
+            } else if (def.mode === 'smooth') {
+              y -= def.strength * 0.5 * (1 + Math.cos((Math.PI * dist) / def.radius));
+            } else if (def.mode === 'twist') {
+              const swirl = (factor * Math.PI * def.strength) / 25;
+              const curDist = Math.hypot(dx, dy);
+              const curAngle = Math.atan2(dy, dx) + swirl;
+              x = def.x + Math.cos(curAngle) * curDist;
+              y = def.y + Math.sin(curAngle) * curDist;
+            }
+          }
+        }
+
+        const skipHash = Math.abs(Math.sin(i * 43.1 + v * 97.7));
+        const shouldSkip = skipChance > 0 && skipHash < skipChance;
+
+        if (shouldSkip) {
+          isDrawing = false;
+          continue;
+        }
+
+        const vx = x.toFixed(1);
+        const vy = y.toFixed(1);
+
+        if (!isDrawing) {
+          d += ` M ${vx} ${vy}`;
+          isDrawing = true;
+        } else {
+          d += ` L ${vx} ${vy}`;
+        }
+      }
+
+      if (isDrawing && skipChance === 0) d += ' Z';
+      if (d.trim().length > 0) {
+        paths.push(`<path d="${d}" fill="none" stroke="${lineColor}" stroke-width="${strokeWidth}" stroke-opacity="${baseOpacity}" stroke-linecap="round" stroke-linejoin="round" />`);
+      }
+    }
+
+    return paths.join('\n    ');
+  }
+
+  /**
+   * Modo Radial / Concéntrico (Transformación acumulativa rotada alrededor de un eje)
+   */
+  renderRadialDistribution(config, bounds) {
+    const { width, height } = bounds;
     const shapeType = config.shape || 'circle';
     const polygonSides = parseInt(config.polygonSides, 10) || 4;
     const baseRadius = parseFloat(config.size) || 300;
     const centerX = (parseFloat(config.centerX || 50) / 100) * width;
     const centerY = (parseFloat(config.centerY || 50) / 100) * height;
 
-    // Parámetros de Transformación Acumulativa
     const copies = parseInt(config.copies, 10) || 50;
     const scaleFactor = parseFloat(config.scaleStep) || 0.96;
     const rotateStep = (parseFloat(config.rotateStep) || 8) * (Math.PI / 180);
@@ -121,7 +458,6 @@ export class AbstractEngine {
     const moveY = parseFloat(config.moveY) || 0;
     const anchor = config.anchor || 'center';
 
-    // Parámetros de Textura & Materia (UJI)
     const jitter = parseFloat(config.jitter) || 0;
     const skipChance = (parseFloat(config.skipChance) || 0) / 100;
     const swappiness = (parseFloat(config.lineSwappiness) || 0) / 100;
@@ -130,16 +466,13 @@ export class AbstractEngine {
     const baseOpacity = parseFloat(config.opacity) || 0.8;
     const lineColor = config.color || '#a5f3fc';
 
-    // Punto de Ancla para la rotación acumulativa
     const anchorX = anchor === 'bottom' ? centerX : anchor === 'side' ? centerX - baseRadius * 0.5 : centerX;
     const anchorY = anchor === 'bottom' ? centerY + baseRadius * 0.5 : centerY;
 
-    // Generar vértices de la figura semilla base
     const rawShape = this.createSeedVertices(shapeType, polygonSides, baseRadius, centerX, centerY, bounds);
     const numVerts = rawShape.length;
     const paths = [];
 
-    // Bucle iterativo de repetición
     for (let i = 0; i < copies; i++) {
       const progress = i / copies;
       const currentScale = Math.pow(scaleFactor, i);
@@ -147,21 +480,17 @@ export class AbstractEngine {
       const tx = i * moveX;
       const ty = i * moveY;
 
-      // Evitar escalas absurdas que colapsan o saturan la memoria
       if (currentScale < 0.01 || currentScale > 10) continue;
 
-      // Clonar y transformar vértices
       let verts = [];
       for (let v = 0; v < numVerts; v++) {
         const pt = rawShape[v];
         const rx = pt.x - anchorX;
         const ry = pt.y - anchorY;
 
-        // Escala y rotación afín
         let x = anchorX + currentScale * (rx * Math.cos(angle) - ry * Math.sin(angle)) + tx;
         let y = anchorY + currentScale * (rx * Math.sin(angle) + ry * Math.cos(angle)) + ty;
 
-        // Ondulación perimetral (Waviness)
         if (waviness > 0) {
           const wAngle = (v / numVerts) * Math.PI * 6 + i * 0.2;
           const wVal = Math.sin(wAngle) * waviness * currentScale;
@@ -169,15 +498,12 @@ export class AbstractEngine {
           y += Math.sin(wAngle) * wVal;
         }
 
-        // Textura analógica de Micro-corrugado / Jitter
         if (jitter > 0) {
-          const jx = (Math.sin(i * 17.13 + v * 53.71) * 0.5) * jitter;
-          const jy = (Math.cos(i * 29.81 + v * 19.33) * 0.5) * jitter;
-          x += jx;
-          y += jy;
+          x += (Math.sin(i * 17.13 + v * 53.71) * 0.5) * jitter;
+          y += (Math.cos(i * 29.81 + v * 19.33) * 0.5) * jitter;
         }
 
-        // Deformaciones manuales esculpidas con el cursor
+        // Deformaciones
         for (const def of this.deformations) {
           const dx = x - def.x;
           const dy = y - def.y;
@@ -202,7 +528,6 @@ export class AbstractEngine {
         verts.push({ x, y });
       }
 
-      // Cruce de hebras / Swappiness (deshilachado textil)
       if (swappiness > 0) {
         const swapCount = Math.floor(numVerts * swappiness * 0.2);
         for (let s = 0; s < swapCount; s++) {
@@ -214,18 +539,16 @@ export class AbstractEngine {
         }
       }
 
-      // Construcción del trazado SVG con soporte de Skip Chance (Respiración/saltos)
       let d = '';
       let isDrawing = false;
       const isClosed = shapeType !== 'line';
 
       for (let v = 0; v < numVerts; v++) {
-        // Test estocástico de salto de segmento
         const skipHash = Math.abs(Math.sin(i * 43.1 + v * 97.7));
         const shouldSkip = skipChance > 0 && skipHash < skipChance;
 
         if (shouldSkip) {
-          isDrawing = false; // Levantar la plumilla
+          isDrawing = false;
           continue;
         }
 
@@ -240,11 +563,8 @@ export class AbstractEngine {
         }
       }
 
-      if (isClosed && isDrawing && skipChance === 0) {
-        d += ' Z';
-      }
+      if (isClosed && isDrawing && skipChance === 0) d += ' Z';
 
-      // Opacidad adaptativa para miles de líneas
       let op = baseOpacity;
       if (copies > 150) {
         op = (baseOpacity * 0.4 + 0.6 * (1 - progress * 0.6)).toFixed(2);
@@ -258,9 +578,6 @@ export class AbstractEngine {
     return paths.join('\n    ');
   }
 
-  /**
-   * Genera los vértices de la figura base
-   */
   createSeedVertices(shape, sides, radius, cx, cy, bounds) {
     const points = [];
 
