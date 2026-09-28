@@ -408,6 +408,44 @@ input[type="range"]:hover::-webkit-slider-thumb {
   z-index: 10;
 }
 
+.sculpt-actions-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.sculpt-actions-bar .btn {
+  flex: 1;
+  justify-content: center;
+  font-size: 0.78rem;
+  padding: 0.4rem 0.5rem;
+}
+
+.canvas-hint {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(19, 27, 38, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  z-index: 10;
+  transition: opacity 0.3s ease;
+}
+
+.canvas-hint.hidden {
+  opacity: 0;
+}
+
 /* ---------------- Buttons ---------------- */
 .btn {
   display: inline-flex;

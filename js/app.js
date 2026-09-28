@@ -12,8 +12,11 @@ class App {
     this.patternSelect = document.getElementById('pattern-select');
     this.patternDesc = document.getElementById('pattern-description');
     this.naturalOriginEl = document.getElementById('natural-origin');
+    this.canvasHintEl = document.getElementById('canvas-hint');
     this.currentSvgString = '';
     this.zoomLevel = 1;
+    this.isSculpting = false;
+    this.lastSculptPos = null;
 
     this.initUI();
     this.setupEvents();
@@ -43,6 +46,14 @@ class App {
     this.patternDesc.textContent = pattern.description;
     if (this.naturalOriginEl) {
       this.naturalOriginEl.textContent = pattern.naturalOrigin || '🌿 Patrón inspirado en la naturaleza';
+    }
+
+    if (this.canvasHintEl) {
+      if (pattern.id === 'sculpt-terrain') {
+        this.canvasHintEl.classList.remove('hidden');
+      } else {
+        this.canvasHintEl.classList.add('hidden');
+      }
     }
 
     this.uiManager.renderPatternControls(pattern);
@@ -123,6 +134,64 @@ class App {
       });
     }
 
+    // Interacción de esculpido manual con el ratón
+    const getCoords = (e) => {
+      const svgEl = this.canvasContainer.querySelector('svg');
+      if (!svgEl) return null;
+      const rect = svgEl.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 800;
+      const y = ((e.clientY - rect.top) / rect.height) * 800;
+      return { x: Math.round(x), y: Math.round(y) };
+    };
+
+    this.canvasContainer.addEventListener('pointerdown', (e) => {
+      const pattern = registry.getActive();
+      if (pattern.addDeformation) {
+        const coords = getCoords(e);
+        if (!coords) return;
+        this.isSculpting = true;
+        this.lastSculptPos = coords;
+        const values = this.uiManager.getValues();
+        pattern.addDeformation(coords.x, coords.y, values);
+        this.renderCurrentPattern(values);
+      }
+    });
+
+    this.canvasContainer.addEventListener('pointermove', (e) => {
+      const pattern = registry.getActive();
+      if (pattern.addDeformation) {
+        const coords = getCoords(e);
+        if (!coords) return;
+        const values = this.uiManager.getValues();
+        pattern.cursorPreview = { cx: coords.x, cy: coords.y, r: parseFloat(values.brushRadius) };
+
+        if (this.isSculpting && this.lastSculptPos) {
+          const dx = coords.x - this.lastSculptPos.x;
+          const dy = coords.y - this.lastSculptPos.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 18) {
+            this.lastSculptPos = coords;
+            pattern.addDeformation(coords.x, coords.y, values);
+          }
+        }
+        this.renderCurrentPattern(values);
+      }
+    });
+
+    const stopSculpting = () => {
+      this.isSculpting = false;
+    };
+    window.addEventListener('pointerup', stopSculpting);
+    window.addEventListener('pointercancel', stopSculpting);
+
+    this.canvasContainer.addEventListener('pointerleave', () => {
+      const pattern = registry.getActive();
+      if (pattern.cursorPreview) {
+        pattern.cursorPreview = null;
+        this.renderCurrentPattern(this.uiManager.getValues());
+      }
+    });
+
     // Botón Mutar / Aleatorizar sutilmente
     const btnMutate = document.getElementById('btn-mutate');
     if (btnMutate) {
@@ -143,6 +212,9 @@ class App {
           values.curl = +(parseFloat(values.curl) + (Math.random() - 0.5) * 0.5).toFixed(1);
           values.noiseScale = +(Math.max(0.001, parseFloat(values.noiseScale) + (Math.random() - 0.5) * 0.0015)).toFixed(4);
           message = `✨ Turbulencia mutada: ${values.curl}x`;
+        } else if (pattern.id === 'sculpt-terrain') {
+          values.baseWaviness = Math.round(Math.random() * 8);
+          message = `✨ Ondulación base mutada: ${values.baseWaviness}px`;
         }
         
         this.uiManager.applyPreset(values, pattern);

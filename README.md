@@ -26,9 +26,10 @@ El objetivo principal es ofrecer un espacio de **exploración visual interactiva
 
 ## 🧩 Patrones Implementados y en Desarrollo
 
+- [x] **Trama Esculpible (Esculpido Manual con Cursor)**: Trama matemática de líneas horizontales base que puedes deformar directamente con el ratón para esculpir picos afilados (estilo cordillera), colinas suaves o valles, con presets inspirados en composiciones topográficas y sol/luna celeste.
+- [x] **Campos de Flujo Orgánico (Viento y Corrientes)**: Dinámica de fluidos y estelas vectoriales continuas generadas por ruido de gradiente, modelando corrientes marinas, dunas del Sahara y auroras boreales.
 - [x] **Filotaxis y Espirales de Fermat**: Disposición de semillas de girasol, piñas y suculentas basada en la fórmula polar de Vogel y el ángulo áureo (~137.508°), con variación morfológica de pétalos, círculos y diamantes.
 - [x] **Ramificaciones Fractales (Árboles Botánicos)**: Sistemas de bifurcación orgánica recursiva (L-Systems) con control de profundidad, apertura angular, tasa de reducción de rama, follaje y fototropismo/viento.
-- [x] **Campos de Flujo Orgánico (Viento y Corrientes)**: Dinámica de fluidos y estelas vectoriales continuas generadas por ruido de gradiente, modelando corrientes marinas, dunas del Sahara y auroras boreales.
 - [ ] **Reacción-Difusión (Patrones de Turing)**: Simulación morfogénica similar a la pigmentación de pieles de animales (manchas de leopardo, rayas de pez cebra).
 - [ ] **Diagramas de Voronoi y Teselaciones**: Estructuras celulares parecidas a panales de abejas o alas de libélula.
 - [ ] **Atractores Extraños y Ondas**: Patrones de interferencia y resonancia armónica.

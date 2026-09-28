@@ -33,12 +33,42 @@ export class UIManager {
         chip.className = 'preset-chip';
         chip.textContent = preset.name;
         chip.addEventListener('click', () => {
+          if (preset.deformations && pattern.deformations !== undefined) {
+            pattern.deformations = JSON.parse(JSON.stringify(preset.deformations));
+          }
           this.applyPreset(preset.values, pattern);
         });
         presetsWrap.appendChild(chip);
       });
 
       this.container.appendChild(presetsSection);
+
+      // Si el patrón tiene historial de esculpido (como sculpt-terrain)
+      if (pattern.id === 'sculpt-terrain') {
+        const actionSection = document.createElement('div');
+        actionSection.className = 'sculpt-actions-bar';
+        actionSection.innerHTML = `
+          <button type="button" id="btn-undo-sculpt" class="btn" title="Deshacer última deformación">↶ Deshacer</button>
+          <button type="button" id="btn-clear-sculpt" class="btn" title="Borrar todas las deformaciones">🗑️ Limpiar Trama</button>
+        `;
+        this.container.appendChild(actionSection);
+
+        actionSection.querySelector('#btn-undo-sculpt').addEventListener('click', () => {
+          if (pattern.undoLastDeformation) {
+            pattern.undoLastDeformation();
+            this.notifyChange();
+            UIManager.showToast('↶ Último trazo deshecho');
+          }
+        });
+
+        actionSection.querySelector('#btn-clear-sculpt').addEventListener('click', () => {
+          if (pattern.clearDeformations) {
+            pattern.clearDeformations();
+            this.notifyChange();
+            UIManager.showToast('🗑️ Trama restablecida a base pura');
+          }
+        });
+      }
     }
 
     // 2. Renderizar cada parámetro según su tipo
