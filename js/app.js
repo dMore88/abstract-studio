@@ -169,9 +169,14 @@ class App {
     const btnMutate = document.getElementById('btn-mutate');
     if (btnMutate) {
       btnMutate.addEventListener('click', () => {
-        this.state.pattern.baseWaviness = Math.round(Math.random() * 8);
-        if (this.state.pattern.type === 'lines') {
+        if (this.state.pattern.archetype === 'lines') {
+          this.state.pattern.baseWaviness = Math.round(Math.random() * 8);
           this.state.pattern.angle = (this.state.pattern.angle + (Math.random() > 0.5 ? 5 : -5) + 180) % 180;
+        } else {
+          this.state.pattern.rotateStep = +(parseFloat(this.state.pattern.rotateStep || 8) + (Math.random() - 0.5) * 1.2).toFixed(2);
+          if (this.state.pattern.scaleStep) {
+            this.state.pattern.scaleStep = +(parseFloat(this.state.pattern.scaleStep) + (Math.random() - 0.5) * 0.006).toFixed(4);
+          }
         }
         this.render();
         this.uiManager.render(this.state, this.engine);

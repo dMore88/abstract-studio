@@ -1,5 +1,7 @@
 /**
- * Motor de Renderizado Vectorial por Capas para Arte Abstracto
+ * Motor de Renderizado Vectorial para Arte Abstracto
+ * Integra arquetipos geométricos, transformación acumulativa (estilo Illustrator)
+ * y micro-textura de papel/fibra (estilo UJI).
  */
 
 export const ASPECT_RATIOS = {
@@ -49,16 +51,16 @@ export class AbstractEngine {
     const bgColor = state.canvas.bgColor;
 
     // 1. Capas de diferencia (Detrás de la trama)
-    const behindDiffs = state.differenceLayers
+    const behindDiffs = (state.differenceLayers || [])
       .filter(l => l.active && l.placement === 'behind')
       .map(l => this.renderDifferenceElement(l, bounds))
       .join('\n');
 
-    // 2. Capa 1: Trama / Patrón de repetición con deformaciones
+    // 2. Capa 1: Trama / Transformación de Arquetipo con Textura y Deformaciones
     const patternSvg = this.renderPatternLayer(state.pattern, bounds);
 
     // 3. Capas de diferencia (Encima de la trama)
-    const inFrontDiffs = state.differenceLayers
+    const inFrontDiffs = (state.differenceLayers || [])
       .filter(l => l.active && l.placement === 'in-front')
       .map(l => this.renderDifferenceElement(l, bounds))
       .join('\n');
@@ -72,39 +74,38 @@ export class AbstractEngine {
 
     return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" style="cursor: crosshair;">
-  <!-- Abstract Gen Art - Canvas: ${width}x${height} -->
+  <!-- Abstract Studio - Canvas: ${width}x${height} -->
   <rect width="100%" height="100%" fill="${bgColor}" />
   
-  <!-- Capa 2 (Fondo): Elementos de Diferencia Detrás -->
+  <!-- Capa Fondo: Elementos de Diferencia Detrás -->
   <g id="layer-diff-behind">
     ${behindDiffs}
   </g>
 
-  <!-- Capa 1: Trama de Repetición y Esculpido -->
+  <!-- Capa 1: Arquetipo Transformado & Esculpido -->
   <g id="layer-pattern">
     ${patternSvg}
   </g>
 
-  <!-- Capa 2 (Frente): Elementos de Diferencia Delante -->
+  <!-- Capa Frente: Elementos de Diferencia Delante -->
   <g id="layer-diff-front">
     ${inFrontDiffs}
   </g>
 
-  <!-- Indicador del Pincel -->
+  <!-- Pincel de Esculpido -->
   ${cursorRing}
 </svg>`.trim();
   }
 
   /**
-   * Renderiza la capa de trama según el tipo (líneas, concéntricos, rejilla)
+   * Renderiza la capa de trama según el arquetipo
    */
   renderPatternLayer(config, bounds) {
-    const { width, height } = bounds;
-    const type = config.type || 'lines';
+    const archetype = config.archetype || 'lines';
 
-    if (type === 'concentric') {
-      return this.renderConcentricPattern(config, bounds);
-    } else if (type === 'grid') {
+    if (archetype === 'spiral_nautilus' || archetype === 'radial_rosette' || archetype === 'concentric_tunnel') {
+      return this.renderIterativeTransform(config, bounds);
+    } else if (archetype === 'grid') {
       return this.renderGridPattern(config, bounds);
     } else {
       return this.renderLinesPattern(config, bounds);
@@ -112,7 +113,168 @@ export class AbstractEngine {
   }
 
   /**
-   * Trama 1: Líneas Paralelas (con rotación de ángulo y deformación)
+   * Motor de Transformación Acumulativa (Inspirado en Illustrator Transform Effect + Textura UJI)
+   */
+  renderIterativeTransform(config, bounds) {
+    const { width, height } = bounds;
+    const cx = width / 2;
+    const cy = height / 2;
+
+    const copies = parseInt(config.copies, 10) || 50;
+    const scaleFactor = parseFloat(config.scaleStep) || 0.96;
+    const rotateStep = (parseFloat(config.rotateStep) || 8) * (Math.PI / 180);
+    const moveX = parseFloat(config.moveX) || 0;
+    const moveY = parseFloat(config.moveY) || 0;
+    const jitter = parseFloat(config.jitter) || 0;
+    const strokeWidth = parseFloat(config.strokeWidth) || 1.0;
+    const baseOpacity = parseFloat(config.opacity) || 0.7;
+    const lineColor = config.color || '#a5f3fc';
+    const archetype = config.archetype || 'spiral_nautilus';
+
+    // Punto de ancla (Centro o Excéntrico hacia un borde)
+    const anchorX = config.anchor === 'bottom' ? cx : config.anchor === 'side' ? cx - 120 : cx;
+    const anchorY = config.anchor === 'bottom' ? cy + 180 : cy;
+
+    // Generar vértices de la figura base
+    const baseShape = this.generateBaseShape(archetype, config, bounds);
+    const paths = [];
+
+    for (let i = 0; i < copies; i++) {
+      const progress = i / copies;
+      
+      // Escala y rotación acumuladas
+      let currentScale = 1;
+      let angle = 0;
+      let tx = 0;
+      let ty = 0;
+
+      if (archetype === 'radial_rosette') {
+        // En roseta radial: rotación completa alrededor de 360°
+        angle = (i / copies) * Math.PI * 2 + (parseFloat(config.angle || 0) * Math.PI / 180);
+        currentScale = Math.pow(scaleFactor, i * 0.1);
+      } else {
+        // En espiral / túnel: escala y rotación acumulativa como Illustrator
+        currentScale = Math.pow(scaleFactor, i);
+        angle = i * rotateStep + (parseFloat(config.angle || 0) * Math.PI / 180);
+        tx = i * moveX;
+        ty = i * moveY;
+      }
+
+      // Si la escala se vuelve microscópica o gigantesca, omitimos
+      if (currentScale < 0.02 || currentScale > 8) continue;
+
+      let d = '';
+      const numVerts = baseShape.length;
+
+      for (let v = 0; v < numVerts; v++) {
+        const pt = baseShape[v];
+
+        // 1. Relativo al ancla
+        const rx = pt.x - anchorX;
+        const ry = pt.y - anchorY;
+
+        // 2. Escala y rotación matricial
+        let x = anchorX + currentScale * (rx * Math.cos(angle) - ry * Math.sin(angle)) + tx;
+        let y = anchorY + currentScale * (rx * Math.sin(angle) + ry * Math.cos(angle)) + ty;
+
+        // 3. Textura analógica de Micro-corrugado / Fibra de papel (UJI effect)
+        if (jitter > 0) {
+          const jx = (Math.sin(i * 12.9898 + v * 78.233) * 0.5) * jitter;
+          const jy = (Math.cos(i * 39.346 + v * 11.135) * 0.5) * jitter;
+          x += jx;
+          y += jy;
+        }
+
+        // 4. Aplicar deformaciones manuales del cursor
+        for (const def of this.deformations) {
+          const dx = x - def.x;
+          const dy = y - def.y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist < def.radius) {
+            const factor = Math.max(0, 1 - dist / def.radius);
+            if (def.mode === 'peak') {
+              y -= def.strength * factor;
+            } else if (def.mode === 'smooth') {
+              y -= def.strength * 0.5 * (1 + Math.cos((Math.PI * dist) / def.radius));
+            } else if (def.mode === 'twist') {
+              const swirl = (factor * Math.PI * def.strength) / 25;
+              const curDist = Math.hypot(dx, dy);
+              const curAngle = Math.atan2(dy, dx) + swirl;
+              x = def.x + Math.cos(curAngle) * curDist;
+              y = def.y + Math.sin(curAngle) * curDist;
+            }
+          }
+        }
+
+        if (v === 0) {
+          d += `M ${x.toFixed(1)} ${y.toFixed(1)}`;
+        } else {
+          d += ` L ${x.toFixed(1)} ${y.toFixed(1)}`;
+        }
+      }
+
+      d += ' Z'; // Cerrar figura
+
+      // Cálculo de opacidad gradual para generar volumen tipo velo / seda
+      let op = baseOpacity;
+      if (copies > 150) {
+        op = (baseOpacity * 0.35 + 0.65 * (1 - progress * 0.7)).toFixed(2);
+      }
+
+      paths.push(`<path d="${d}" fill="none" stroke="${lineColor}" stroke-width="${strokeWidth}" stroke-opacity="${op}" stroke-linecap="round" stroke-linejoin="round" />`);
+    }
+
+    return paths.join('\n    ');
+  }
+
+  /**
+   * Genera los vértices de la figura semilla base
+   */
+  generateBaseShape(archetype, config, bounds) {
+    const { width, height } = bounds;
+    const cx = width / 2;
+    const cy = height / 2;
+    const points = [];
+
+    if (archetype === 'spiral_nautilus') {
+      // Elipse vertical esbelta (como en la Imagen 5 de Illustrator)
+      const rx = width * 0.18;
+      const ry = height * 0.32;
+      const steps = 72;
+      for (let s = 0; s < steps; s++) {
+        const a = (s / steps) * Math.PI * 2;
+        points.push({ x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a) });
+      }
+    } else if (archetype === 'radial_rosette') {
+      // Pétalo simétrico (como en la Imagen 3 de Illustrator)
+      const steps = 60;
+      const r = width * 0.22;
+      for (let s = 0; s < steps; s++) {
+        const a = (s / steps) * Math.PI * 2;
+        // Curva en forma de pétalo
+        const modR = r * (0.8 + 0.4 * Math.sin(a));
+        points.push({ x: cx + modR * Math.cos(a) * 0.6, y: cy - modR * Math.sin(a) });
+      }
+    } else if (archetype === 'concentric_tunnel') {
+      // Polígono con ondulación perimetral (como en la Imagen 1)
+      const sides = parseInt(config.polygonSides, 10) || 7;
+      const baseR = width * 0.42;
+      const steps = 90;
+      for (let s = 0; s < steps; s++) {
+        const a = (s / steps) * Math.PI * 2;
+        // Suavizado armónico poligonal
+        const polyWave = Math.cos(a * sides) * 0.15;
+        const r = baseR * (1 + polyWave);
+        points.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+      }
+    }
+
+    return points;
+  }
+
+  /**
+   * Trama Tradicional de Líneas Paralelas (con soporte de micro-jitter de papel)
    */
   renderLinesPattern(config, bounds) {
     const { width, height } = bounds;
@@ -120,6 +282,7 @@ export class AbstractEngine {
     const strokeWidth = parseFloat(config.strokeWidth) || 1.2;
     const angleDeg = parseFloat(config.angle) || 0;
     const baseWave = parseFloat(config.baseWaviness) || 0;
+    const jitter = parseFloat(config.jitter) || 0;
     const lineColor = config.color || '#a5f3fc';
 
     const cx = width / 2;
@@ -128,10 +291,9 @@ export class AbstractEngine {
     const cosA = Math.cos(rad);
     const sinA = Math.sin(rad);
 
-    // Diagonal para cubrir todo el lienzo sin cortes al rotar
-    const diag = Math.sqrt(width * width + height * height);
+    const diag = Math.hypot(width, height);
     const lineSpacing = diag / (numLines + 1);
-    const numPointsPerLine = 120;
+    const numPointsPerLine = 130;
     const stepT = diag / (numPointsPerLine - 1);
     const halfDiag = diag / 2;
 
@@ -143,48 +305,46 @@ export class AbstractEngine {
 
       for (let p = 0; p < numPointsPerLine; p++) {
         const t = -halfDiag + p * stepT;
-
-        // Coordenadas base en el plano rotado
         let u = t;
         let v = lineOffset;
 
-        // Ondulación base matemática
+        // Ondulación matemática base
         if (baseWave > 0) {
           const normP = p / numPointsPerLine;
           v += Math.sin(normP * Math.PI * 4 + l * 0.25) * (baseWave * 0.7);
         }
 
-        // Transformación a coordenadas del lienzo (X, Y)
         let x = cx + u * cosA - v * sinA;
         let y = cy + u * sinA + v * cosA;
 
-        // Aplicar deformaciones manuales del usuario en espacio de lienzo
+        // Textura de papel / micro-corrugado
+        if (jitter > 0) {
+          x += (Math.sin(l * 13.1 + p * 37.3) * 0.5) * jitter;
+          y += (Math.cos(l * 29.7 + p * 19.1) * 0.5) * jitter;
+        }
+
+        // Deformaciones manuales esculpidas por el usuario
         for (const def of this.deformations) {
           const dx = x - def.x;
           const dy = y - def.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
+          const dist = Math.hypot(dx, dy);
 
           if (dist < def.radius) {
             const factor = Math.max(0, 1 - dist / def.radius);
-
             if (def.mode === 'peak') {
-              // Pico afilado: deformación normal a la línea hacia el origen del arrastre
-              const pushX = -sinA * def.strength * factor;
-              const pushY = -cosA * def.strength * factor;
-              x += pushX;
-              y += pushY;
+              x -= sinA * def.strength * factor;
+              y -= cosA * def.strength * factor;
             } else if (def.mode === 'smooth') {
               const smoothFactor = 0.5 * (1 + Math.cos((Math.PI * dist) / def.radius));
-              x += -sinA * def.strength * smoothFactor;
-              y += -cosA * def.strength * smoothFactor;
+              x -= sinA * def.strength * smoothFactor;
+              y -= cosA * def.strength * smoothFactor;
             } else if (def.mode === 'twist') {
-              const swirlAngle = (factor * Math.PI * def.strength) / 30;
+              const swirl = (factor * Math.PI * def.strength) / 30;
               const curDist = Math.hypot(dx, dy);
-              const curAngle = Math.atan2(dy, dx) + swirlAngle;
+              const curAngle = Math.atan2(dy, dx) + swirl;
               x = def.x + Math.cos(curAngle) * curDist;
               y = def.y + Math.sin(curAngle) * curDist;
             } else if (def.mode === 'flatten') {
-              // Restaura suavemente hacia coordenadas nominales
               const nominalX = cx + u * cosA - lineOffset * sinA;
               const nominalY = cy + u * sinA + lineOffset * cosA;
               x = x * (1 - factor) + nominalX * factor;
@@ -200,82 +360,19 @@ export class AbstractEngine {
         }
       }
 
-      const opacity = (0.4 + 0.6 * (l / numLines)).toFixed(2);
+      const opacity = (0.35 + 0.65 * (l / numLines)).toFixed(2);
       paths.push(`<path d="${d}" fill="none" stroke="${lineColor}" stroke-width="${strokeWidth}" stroke-opacity="${opacity}" stroke-linecap="round" stroke-linejoin="round" />`);
     }
 
     return paths.join('\n    ');
   }
 
-  /**
-   * Trama 2: Polígonos y Conos Concéntricos (como la pieza 1)
-   */
-  renderConcentricPattern(config, bounds) {
-    const { width, height } = bounds;
-    const cx = width / 2;
-    const cy = height / 2;
-    const numRings = parseInt(config.density, 10) || 35;
-    const strokeWidth = parseFloat(config.strokeWidth) || 1.2;
-    const sides = parseInt(config.polygonSides, 10) || 6; // 3, 4, 6, 8 o 36 (círculo)
-    const lineColor = config.color || '#ea580c';
-    const angleDeg = parseFloat(config.angle) || 0;
-    const rotOffset = (angleDeg * Math.PI) / 180;
-
-    const maxR = Math.hypot(width, height) * 0.45;
-    const stepR = maxR / numRings;
-    const paths = [];
-
-    for (let rIdx = 1; rIdx <= numRings; rIdx++) {
-      const radius = rIdx * stepR;
-      const points = [];
-      const numVerts = sides >= 24 ? 90 : sides;
-
-      for (let v = 0; v < numVerts; v++) {
-        const theta = (v / numVerts) * Math.PI * 2 + rotOffset;
-        let x = cx + radius * Math.cos(theta);
-        let y = cy + radius * Math.sin(theta);
-
-        // Deformación manual
-        for (const def of this.deformations) {
-          const dx = x - def.x;
-          const dy = y - def.y;
-          const dist = Math.hypot(dx, dy);
-
-          if (dist < def.radius) {
-            const factor = Math.max(0, 1 - dist / def.radius);
-            if (def.mode === 'peak') {
-              y -= def.strength * factor;
-            } else if (def.mode === 'smooth') {
-              y -= def.strength * 0.5 * (1 + Math.cos((Math.PI * dist) / def.radius));
-            } else if (def.mode === 'twist') {
-              const thetaNew = theta + factor * (def.strength / 20);
-              x = cx + radius * Math.cos(thetaNew);
-              y = cy + radius * Math.sin(thetaNew);
-            }
-          }
-        }
-        points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
-      }
-
-      const opacity = (0.35 + 0.65 * (rIdx / numRings)).toFixed(2);
-      paths.push(`<polygon points="${points.join(' ')}" fill="none" stroke="${lineColor}" stroke-width="${strokeWidth}" stroke-opacity="${opacity}" stroke-linejoin="round" />`);
-    }
-
-    return paths.join('\n    ');
-  }
-
-  /**
-   * Trama 3: Rejilla Cuadriculada / Cruzada
-   */
   renderGridPattern(config, bounds) {
     const hConfig = { ...config, angle: 0 };
     const vConfig = { ...config, angle: 90 };
     return this.renderLinesPattern(hConfig, bounds) + '\n' + this.renderLinesPattern(vConfig, bounds);
   }
 
-  /**
-   * Renderiza una capa de diferencia (figura geométrica o tipografía)
-   */
   renderDifferenceElement(layer, bounds) {
     const { width, height } = bounds;
     const x = (parseFloat(layer.x) / 100) * width;
@@ -321,15 +418,10 @@ export class AbstractEngine {
     return '';
   }
 
-  /**
-   * Genera snippet de código limpio exportable
-   */
   toCode(state) {
-    return `// Abstract Gen Art Studio - Layered Composition Code
+    return `// Abstract Studio - Vector Generative Code
 const state = ${JSON.stringify(state, null, 2)};
 const deformations = ${JSON.stringify(this.deformations, null, 2)};
-
-// Complete vector SVG generated with pure math and manual sculpted deformations.
 `;
   }
 }
