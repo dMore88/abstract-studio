@@ -3,7 +3,7 @@
 Una aplicación web de **diseño generativo paramétrico y arte abstracto por capas**, inspirada en los métodos de transformación acumulativa de Adobe Illustrator (*Efecto > Transformar*), la textura táctil analógica de UJI (*micro-corrugado / papel washi*) y la elegancia geométrica de *Book of Shapes*.
 
 > 🚀 **Demo en vivo (GitHub Pages)**:  
-> **[https://dmore88.github.io/nature-gen-art/](https://dmore88.github.io/nature-gen-art/)**
+> **[https://dmore88.github.io/abstract-studio/](https://dmore88.github.io/abstract-studio/)**
 
 ---
 
