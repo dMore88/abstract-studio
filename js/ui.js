@@ -1,857 +1,1082 @@
 /**
- * Gestor de Interfaz de Usuario para Abstract Studio
- * Modo: Carbón y Tiza (Charcoal & Chalk)
- * 1. Figura Base (Posición X/Y, Tamaño o Caja Delimitadora)
- * 2. Repetición (Lineal con apilamiento vertical o Radial concéntrico)
- * 3. Textura & Materia (Jitter, Skip Chance, Line Swappiness estilo UJI)
- * 4. Esculpido Manual Directo (Cursor)
- * 5. Capas de Diferencia
- *
- * Controles de precisión dual: Deslizador (Range) + Teclado (Number Input)
+ * Abstract Studio - Gestor de Interfaz de Usuario (Estilo Figma Creative Suite)
+ * - Panel Izquierdo: Gestor de Capas Multicapa & Efectos Moiré
+ * - Panel Derecho: Inspector de Propiedades Unificado (Geometría, Distribución, Moduladores y Materia)
  */
 
-import { ASPECT_RATIOS } from './engine.js';
+import { Shapes, SHAPE_KEYS } from './shapes.js';
+import { PRESETS } from './presets.js';
+import { PALETTES } from './palettes.js';
 
 export class UIManager {
-  constructor({ containerId, onStateChange, onUndo, onClearDeformations }) {
-    this.container = document.getElementById(containerId);
+  constructor({
+    layersContainerId,
+    inspectorContainerId,
+    onStateChange,
+    onLayerSelect,
+    onUndoDeformation,
+    onClearDeformations
+  }) {
+    this.layersContainer = document.getElementById(layersContainerId);
+    this.inspectorContainer = document.getElementById(inspectorContainerId);
     this.onStateChange = onStateChange;
-    this.onUndo = onUndo;
+    this.onLayerSelect = onLayerSelect;
+    this.onUndoDeformation = onUndoDeformation;
     this.onClearDeformations = onClearDeformations;
   }
 
-  render(state, engine) {
-    if (!this.container) return;
-    this.container.innerHTML = '';
-
-    // 0. Formato del Lienzo
-    this.renderCanvasSection(state);
-
-    // 1. Figura Base & 2. Repetición (Lineal / Radial) & 3. Textura
-    this.renderCoreSection(state, engine);
-
-    // 4. Esculpido Directo
-    this.renderSculptSection(state, engine);
-
-    // 5. Capas de Diferencia
-    this.renderDifferenceSection(state);
+  notifyChange() {
+    if (this.onStateChange) this.onStateChange();
   }
 
-  renderCanvasSection(state) {
-    const section = document.createElement('div');
-    section.className = 'control-section';
-    section.innerHTML = `
-      <div class="section-title">📐 Lienzo & Proporción</div>
-      <div class="control-group">
-        <label class="control-label">Aspect Ratio</label>
-        <div class="aspect-grid" id="aspect-ratio-buttons"></div>
+  render(state) {
+    this.renderLayersPanel(state);
+    this.renderInspector(state);
+  }
+
+  // =========================================================================
+  // 1. PANEL DE CAPAS (COLUMNA IZQUIERDA - FIGMA STYLE)
+  // =========================================================================
+
+  renderLayersPanel(state) {
+    if (!this.layersContainer) return;
+    this.layersContainer.innerHTML = '';
+
+    // Encabezado del panel de capas
+    const header = document.createElement('div');
+    header.className = 'panel-header';
+    header.innerHTML = `
+      <div class="panel-header-title">
+        <span class="font-bold">Capas</span>
+        <span class="layer-count-badge">${state.layers.length}</span>
+      </div>
+      <div class="layer-actions-group">
+        <button id="btn-add-pattern" class="btn-tool" title="Añadir Capa de Patrón Generativo">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          <span>Patrón</span>
+        </button>
+        <button id="btn-add-accent" class="btn-tool" title="Añadir Capa de Elemento / Acento">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
+          <span>Acento</span>
+        </button>
       </div>
     `;
+    this.layersContainer.appendChild(header);
 
-    const aspectContainer = section.querySelector('#aspect-ratio-buttons');
-    for (const [key, val] of Object.entries(ASPECT_RATIOS)) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = `aspect-btn ${state.canvas.aspectRatio === key ? 'active' : ''}`;
-      btn.textContent = key;
-      btn.title = val.label;
-      btn.addEventListener('click', () => {
-        state.canvas.aspectRatio = key;
-        aspectContainer.querySelectorAll('.aspect-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.notifyChange();
-      });
-      aspectContainer.appendChild(btn);
-    }
+    // Botón de acceso rápido a Efecto Moiré
+    const moireBar = document.createElement('div');
+    moireBar.className = 'quick-action-bar';
+    moireBar.innerHTML = `
+      <button id="btn-quick-moire" class="btn-moire-quick" title="Crear automáticamente un par de patrones superpuestos para Moiré">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/></svg>
+        <span>+ Par Moiré Interactivo</span>
+      </button>
+    `;
+    this.layersContainer.appendChild(moireBar);
 
-    this.container.appendChild(section);
-  }
+    // Lista de Capas (Ordenadas de Frente a Fondo)
+    const list = document.createElement('div');
+    list.className = 'layers-list';
 
-  renderCoreSection(state, engine) {
-    const p = state.pattern;
-    if (!p.distribution) p.distribution = 'linear';
-    if (p.angle === undefined) p.angle = 0;
-    if (p.posX === undefined) p.posX = 50;
-    if (p.posY === undefined) p.posY = 50;
-    if (p.sizeX === undefined) p.sizeX = p.size || 500;
-    if (p.sizeY === undefined) p.sizeY = p.size || 380;
-    if (p.stepX === undefined) p.stepX = 0;
-    if (p.stepY === undefined) p.stepY = 35;
+    // Renderizar en orden inverso para que la capa superior aparezca primero visualmente
+    for (let idx = state.layers.length - 1; idx >= 0; idx--) {
+      const layer = state.layers[idx];
+      const isActive = layer.id === state.activeLayerId;
+      const shapeDef = Shapes[layer.shape] || Shapes.circle;
 
-    const section = document.createElement('div');
-    section.className = 'control-section';
-
-    let repetitionControlsHtml = '';
-
-    if (p.distribution === 'linear') {
-      if (p.shape === 'line') {
-        repetitionControlsHtml = `
-          <div class="control-group">
-            <div class="control-header">
-              <label class="control-label" for="num-copies">Copias de Repetición</label>
-              <div class="control-input-wrapper">
-                <input type="number" id="num-copies" class="number-input" min="1" max="500" step="1" value="${p.copies}">
-              </div>
-            </div>
-            <input type="range" id="input-copies" min="1" max="500" step="1" value="${p.copies}">
+      const item = document.createElement('div');
+      item.className = `layer-item ${isActive ? 'active' : ''} ${!layer.visible ? 'hidden-layer' : ''}`;
+      item.innerHTML = `
+        <div class="layer-item-main">
+          <button class="layer-visibility-btn" title="${layer.visible ? 'Ocultar Capa' : 'Mostrar Capa'}">
+            ${layer.visible
+              ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`
+              : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9.88 9.88 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>`
+            }
+          </button>
+          
+          <div class="layer-thumbnail">
+            ${shapeDef.iconSvg}
           </div>
 
-          <div class="control-group">
-            <div class="control-header">
-              <label class="control-label" for="num-angle">Ángulo de Trama</label>
-              <div class="control-input-wrapper">
-                <input type="number" id="num-angle" class="number-input" min="0" max="180" step="1" value="${p.angle}">
-                <span class="unit-tag">°</span>
-              </div>
-            </div>
-            <input type="range" id="input-angle" min="0" max="180" step="1" value="${p.angle}">
-            <div class="quick-angle-buttons">
-              <button type="button" class="btn-chip ${p.angle === 0 ? 'active' : ''}" data-angle="0">0° Horiz</button>
-              <button type="button" class="btn-chip ${p.angle === 90 ? 'active' : ''}" data-angle="90">90° Vert</button>
-              <button type="button" class="btn-chip ${p.angle === 45 ? 'active' : ''}" data-angle="45">45° Diag</button>
-              <button type="button" class="btn-chip ${p.angle === 135 ? 'active' : ''}" data-angle="135">135° Diag</button>
-            </div>
-          </div>
-        `;
-      } else {
-        // Figuras geométricas en repetición lineal: una debajo de la otra en vertical por defecto
-        repetitionControlsHtml = `
-          <div class="control-group">
-            <div class="control-header">
-              <label class="control-label" for="num-copies">Copias de Repetición</label>
-              <div class="control-input-wrapper">
-                <input type="number" id="num-copies" class="number-input" min="1" max="300" step="1" value="${p.copies}">
-              </div>
-            </div>
-            <input type="range" id="input-copies" min="1" max="300" step="1" value="${p.copies}">
-          </div>
-
-          <div class="dual-slider-row">
-            <div class="control-group flex-1">
-              <div class="control-header">
-                <label class="control-label-sm" for="num-stepY">Paso Vertical</label>
-                <div class="control-input-wrapper">
-                  <input type="number" id="num-stepY" class="number-input" min="-150" max="150" step="1" value="${p.stepY}">
-                  <span class="unit-tag">px</span>
-                </div>
-              </div>
-              <input type="range" id="input-stepY" min="-150" max="150" step="1" value="${p.stepY}">
-            </div>
-            <div class="control-group flex-1">
-              <div class="control-header">
-                <label class="control-label-sm" for="num-stepX">Paso Horizontal</label>
-                <div class="control-input-wrapper">
-                  <input type="number" id="num-stepX" class="number-input" min="-150" max="150" step="1" value="${p.stepX}">
-                  <span class="unit-tag">px</span>
-                </div>
-              </div>
-              <input type="range" id="input-stepX" min="-150" max="150" step="1" value="${p.stepX}">
-            </div>
-          </div>
-          <span class="sub-hint">Paso vertical > 0 apila las figuras una debajo de la otra en vertical</span>
-
-          <div class="dual-slider-row" style="margin-top: 0.35rem;">
-            <div class="control-group flex-1">
-              <div class="control-header">
-                <label class="control-label-sm" for="num-scaleStep">Escala %</label>
-                <div class="control-input-wrapper">
-                  <input type="number" id="num-scaleStep" class="number-input" min="70" max="130" step="0.5" value="${Math.round(p.scaleStep * 100)}">
-                  <span class="unit-tag">%</span>
-                </div>
-              </div>
-              <input type="range" id="input-scaleStep" min="70" max="130" step="0.5" value="${Math.round(p.scaleStep * 100)}">
-            </div>
-            <div class="control-group flex-1">
-              <div class="control-header">
-                <label class="control-label-sm" for="num-rotateStep">Giro °</label>
-                <div class="control-input-wrapper">
-                  <input type="number" id="num-rotateStep" class="number-input" min="-45" max="45" step="0.5" value="${p.rotateStep}">
-                  <span class="unit-tag">°</span>
-                </div>
-              </div>
-              <input type="range" id="input-rotateStep" min="-45" max="45" step="0.5" value="${p.rotateStep}">
-            </div>
-          </div>
-        `;
-      }
-    } else {
-      // Repetición Radial
-      repetitionControlsHtml = `
-        <div class="control-group">
-          <div class="control-header">
-            <label class="control-label" for="num-copies">Copias de Repetición</label>
-            <div class="control-input-wrapper">
-              <input type="number" id="num-copies" class="number-input" min="2" max="800" step="1" value="${p.copies}">
-            </div>
-          </div>
-          <input type="range" id="input-copies" min="2" max="800" step="1" value="${p.copies}">
-        </div>
-
-        <div class="dual-slider-row">
-          <div class="control-group flex-1">
-            <div class="control-header">
-              <label class="control-label-sm" for="num-scaleStep">Escala %</label>
-              <div class="control-input-wrapper">
-                <input type="number" id="num-scaleStep" class="number-input" min="85" max="115" step="0.2" value="${(p.scaleStep * 100).toFixed(1)}">
-                <span class="unit-tag">%</span>
-              </div>
-            </div>
-            <input type="range" id="input-scaleStep" min="85" max="115" step="0.2" value="${(p.scaleStep * 100).toFixed(1)}">
-          </div>
-          <div class="control-group flex-1">
-            <div class="control-header">
-              <label class="control-label-sm" for="num-rotateStep">Giro °</label>
-              <div class="control-input-wrapper">
-                <input type="number" id="num-rotateStep" class="number-input" min="-30" max="30" step="0.2" value="${p.rotateStep}">
-                <span class="unit-tag">°</span>
-              </div>
-            </div>
-            <input type="range" id="input-rotateStep" min="-30" max="30" step="0.2" value="${p.rotateStep}">
+          <div class="layer-info">
+            <span class="layer-name" title="${layer.name}">${layer.name}</span>
+            <span class="layer-badge">${layer.type === 'pattern' ? (layer.distribution || 'patrón') : 'acento'} • ${layer.blendMode === 'difference' ? 'Moiré (Diff)' : layer.blendMode}</span>
           </div>
         </div>
 
-        <div class="dual-slider-row">
-          <div class="control-group flex-1">
-            <div class="control-header">
-              <label class="control-label-sm" for="num-moveX">Mover X</label>
-              <div class="control-input-wrapper">
-                <input type="number" id="num-moveX" class="number-input" min="-20" max="20" step="0.5" value="${p.moveX}">
-                <span class="unit-tag">px</span>
-              </div>
-            </div>
-            <input type="range" id="input-moveX" min="-20" max="20" step="0.5" value="${p.moveX}">
-          </div>
-          <div class="control-group flex-1">
-            <div class="control-header">
-              <label class="control-label-sm" for="num-moveY">Mover Y</label>
-              <div class="control-input-wrapper">
-                <input type="number" id="num-moveY" class="number-input" min="-20" max="20" step="0.5" value="${p.moveY}">
-                <span class="unit-tag">px</span>
-              </div>
-            </div>
-            <input type="range" id="input-moveY" min="-20" max="20" step="0.5" value="${p.moveY}">
-          </div>
-        </div>
-
-        <div class="control-group">
-          <label class="control-label-sm">Punto de Ancla (Eje)</label>
-          <div class="segmented-control" id="anchor-control">
-            <button type="button" class="segmented-btn ${p.anchor === 'center' ? 'active' : ''}" data-anchor="center">Centro</button>
-            <button type="button" class="segmented-btn ${p.anchor === 'bottom' ? 'active' : ''}" data-anchor="bottom">Base Excéntrica</button>
-            <button type="button" class="segmented-btn ${p.anchor === 'side' ? 'active' : ''}" data-anchor="side">Lateral</button>
-          </div>
+        <div class="layer-item-controls">
+          <button class="layer-order-btn btn-layer-up" title="Mover Arriba" ${idx === state.layers.length - 1 ? 'disabled' : ''}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+          </button>
+          <button class="layer-order-btn btn-layer-down" title="Mover Abajo" ${idx === 0 ? 'disabled' : ''}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <button class="layer-delete-btn" title="Eliminar Capa" ${state.layers.length <= 1 ? 'disabled' : ''}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
       `;
-    }
 
-    section.innerHTML = `
-      <div class="section-title">🔷 1. Figura Base (Semilla)</div>
-      
-      <div class="control-group">
-        <label class="control-label">Geometría Semilla</label>
-        <div class="segmented-control" id="shape-control">
-          <button type="button" class="segmented-btn ${p.shape === 'line' ? 'active' : ''}" data-shape="line">Línea</button>
-          <button type="button" class="segmented-btn ${p.shape === 'circle' ? 'active' : ''}" data-shape="circle">Círculo</button>
-          <button type="button" class="segmented-btn ${p.shape === 'polygon' ? 'active' : ''}" data-shape="polygon">Polígono</button>
-          <button type="button" class="segmented-btn ${p.shape === 'petal' ? 'active' : ''}" data-shape="petal">Pétalo</button>
-        </div>
-      </div>
-
-      <div id="polygon-sides-group" class="control-group" style="display: ${p.shape === 'polygon' ? 'flex' : 'none'};">
-        <label class="control-label-sm">Lados del Polígono</label>
-        <div class="segmented-control" id="sides-control">
-          <button type="button" class="segmented-btn ${p.polygonSides === 3 ? 'active' : ''}" data-sides="3">Triángulo</button>
-          <button type="button" class="segmented-btn ${p.polygonSides === 4 ? 'active' : ''}" data-sides="4">Rombo</button>
-          <button type="button" class="segmented-btn ${p.polygonSides === 5 ? 'active' : ''}" data-sides="5">Pentágono</button>
-          <button type="button" class="segmented-btn ${p.polygonSides === 6 ? 'active' : ''}" data-sides="6">Hexágono</button>
-          <button type="button" class="segmented-btn ${p.polygonSides === 8 ? 'active' : ''}" data-sides="8">Octágono</button>
-        </div>
-      </div>
-
-      <div class="dual-slider-row">
-        <div class="control-group flex-1">
-          <div class="control-header">
-            <label class="control-label-sm" for="num-posX">Posición X</label>
-            <div class="control-input-wrapper">
-              <input type="number" id="num-posX" class="number-input" min="0" max="100" step="1" value="${p.posX}">
-              <span class="unit-tag">%</span>
-            </div>
-          </div>
-          <input type="range" id="input-posX" min="0" max="100" step="1" value="${p.posX}">
-        </div>
-        <div class="control-group flex-1">
-          <div class="control-header">
-            <label class="control-label-sm" for="num-posY">Posición Y</label>
-            <div class="control-input-wrapper">
-              <input type="number" id="num-posY" class="number-input" min="0" max="100" step="1" value="${p.posY}">
-              <span class="unit-tag">%</span>
-            </div>
-          </div>
-          <input type="range" id="input-posY" min="0" max="100" step="1" value="${p.posY}">
-        </div>
-      </div>
-
-      ${p.shape === 'line' ? `
-      <div class="dual-slider-row">
-        <div class="control-group flex-1">
-          <div class="control-header">
-            <label class="control-label-sm" for="num-sizeX">Ancho Líneas</label>
-            <div class="control-input-wrapper">
-              <input type="number" id="num-sizeX" class="number-input" min="30" max="1400" step="10" value="${p.sizeX}">
-              <span class="unit-tag">px</span>
-            </div>
-          </div>
-          <input type="range" id="input-sizeX" min="30" max="1400" step="10" value="${p.sizeX}">
-        </div>
-        <div class="control-group flex-1">
-          <div class="control-header">
-            <label class="control-label-sm" for="num-sizeY">Alto / Cobertura</label>
-            <div class="control-input-wrapper">
-              <input type="number" id="num-sizeY" class="number-input" min="30" max="1400" step="10" value="${p.sizeY}">
-              <span class="unit-tag">px</span>
-            </div>
-          </div>
-          <input type="range" id="input-sizeY" min="30" max="1400" step="10" value="${p.sizeY}">
-        </div>
-      </div>
-      <span class="sub-hint">Rectángulo delimitador: pequeño (<400px) = Objeto central | grande (>800px) = Fondo sangrado</span>
-      ` : `
-      <div class="control-group">
-        <div class="control-header">
-          <label class="control-label" for="num-size">Tamaño Base (Radio)</label>
-          <div class="control-input-wrapper">
-            <input type="number" id="num-size" class="number-input" min="20" max="1000" step="5" value="${p.size}">
-            <span class="unit-tag">px</span>
-          </div>
-        </div>
-        <input type="range" id="input-size" min="20" max="1000" step="5" value="${p.size}">
-      </div>
-      `}
-
-      <div class="section-title" style="margin-top: 0.8rem;">🔄 2. Repetición</div>
-
-      <div class="control-group">
-        <label class="control-label">Tipo de Repetición</label>
-        <div class="segmented-control" id="distribution-control">
-          <button type="button" class="segmented-btn ${p.distribution === 'linear' ? 'active' : ''}" data-dist="linear">Lineal</button>
-          <button type="button" class="segmented-btn ${p.distribution === 'radial' ? 'active' : ''}" data-dist="radial">Radial</button>
-        </div>
-      </div>
-
-      ${repetitionControlsHtml}
-
-      <div class="section-title" style="margin-top: 0.8rem;">🌾 3. Textura & Materia (UJI)</div>
-
-      <div class="control-group">
-        <div class="control-header">
-          <label class="control-label" for="num-jitter">Micro-corrugado (Jitter / Fibra)</label>
-          <div class="control-input-wrapper">
-            <input type="number" id="num-jitter" class="number-input" min="0" max="8" step="0.1" value="${(p.jitter || 0).toFixed(1)}">
-            <span class="unit-tag">px</span>
-          </div>
-        </div>
-        <input type="range" id="input-jitter" min="0" max="8" step="0.1" value="${p.jitter || 0}">
-      </div>
-
-      <div class="control-group">
-        <div class="control-header">
-          <label class="control-label" for="num-skipChance">Salto de Líneas (Respiración)</label>
-          <div class="control-input-wrapper">
-            <input type="number" id="num-skipChance" class="number-input" min="0" max="60" step="1" value="${p.skipChance || 0}">
-            <span class="unit-tag">%</span>
-          </div>
-        </div>
-        <input type="range" id="input-skipChance" min="0" max="60" step="1" value="${p.skipChance || 0}">
-      </div>
-
-      <div class="control-group">
-        <div class="control-header">
-          <label class="control-label" for="num-lineSwappiness">Cruce de Hebras (Deshilachado)</label>
-          <div class="control-input-wrapper">
-            <input type="number" id="num-lineSwappiness" class="number-input" min="0" max="60" step="1" value="${p.lineSwappiness || 0}">
-            <span class="unit-tag">%</span>
-          </div>
-        </div>
-        <input type="range" id="input-lineSwappiness" min="0" max="60" step="1" value="${p.lineSwappiness || 0}">
-      </div>
-
-      <div class="control-group">
-        <div class="control-header">
-          <label class="control-label" for="num-waviness">Ondulación Perimetral</label>
-          <div class="control-input-wrapper">
-            <input type="number" id="num-waviness" class="number-input" min="0" max="30" step="1" value="${p.waviness || 0}">
-            <span class="unit-tag">px</span>
-          </div>
-        </div>
-        <input type="range" id="input-waviness" min="0" max="30" step="1" value="${p.waviness || 0}">
-      </div>
-
-      <div class="dual-slider-row">
-        <div class="control-group flex-1">
-          <div class="control-header">
-            <label class="control-label-sm" for="num-strokeWidth">Grosor</label>
-            <div class="control-input-wrapper">
-              <input type="number" id="num-strokeWidth" class="number-input" min="0.2" max="6.0" step="0.1" value="${p.strokeWidth || 1.2}">
-              <span class="unit-tag">px</span>
-            </div>
-          </div>
-          <input type="range" id="input-strokeWidth" min="0.2" max="6.0" step="0.1" value="${p.strokeWidth || 1.2}">
-        </div>
-        <div class="control-group flex-1">
-          <div class="control-header">
-            <label class="control-label-sm" for="num-opacity">Opacidad</label>
-            <div class="control-input-wrapper">
-              <input type="number" id="num-opacity" class="number-input" min="5" max="100" step="1" value="${Math.round((p.opacity || 0.9) * 100)}">
-              <span class="unit-tag">%</span>
-            </div>
-          </div>
-          <input type="range" id="input-opacity" min="5" max="100" step="1" value="${Math.round((p.opacity || 0.9) * 100)}">
-        </div>
-      </div>
-    `;
-
-    // Selección de forma base
-    const shapeBtns = section.querySelectorAll('#shape-control .segmented-btn');
-    shapeBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        p.shape = btn.dataset.shape;
-        this.render(state, engine);
+      // Clic para seleccionar
+      item.querySelector('.layer-item-main').addEventListener('click', () => {
+        state.activeLayerId = layer.id;
+        this.render(state);
         this.notifyChange();
       });
-    });
 
-    // Lados de polígono
-    const sidesBtns = section.querySelectorAll('#sides-control .segmented-btn');
-    sidesBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        sidesBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        p.polygonSides = parseInt(btn.dataset.sides, 10);
+      // Toggle visibilidad
+      item.querySelector('.layer-visibility-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        layer.visible = !layer.visible;
+        this.render(state);
         this.notifyChange();
       });
-    });
 
-    // Modo de Repetición: Lineal vs Radial
-    const distBtns = section.querySelectorAll('#distribution-control .segmented-btn');
-    distBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        p.distribution = btn.dataset.dist;
-        this.render(state, engine);
-        this.notifyChange();
-      });
-    });
-
-    // Ancla (modo radial)
-    const anchorBtns = section.querySelectorAll('#anchor-control .segmented-btn');
-    anchorBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        anchorBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        p.anchor = btn.dataset.anchor;
-        this.notifyChange();
-      });
-    });
-
-    // Botones rápidos de Ángulo (líneas en modo lineal)
-    const angleChips = section.querySelectorAll('.quick-angle-buttons .btn-chip');
-    const angleInput = section.querySelector('#input-angle');
-    const angleNum = section.querySelector('#num-angle');
-    angleChips.forEach(chip => {
-      chip.addEventListener('click', () => {
-        const ang = parseFloat(chip.dataset.angle);
-        p.angle = ang;
-        if (angleInput) angleInput.value = ang;
-        if (angleNum) angleNum.value = ang;
-        angleChips.forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-        this.notifyChange();
-      });
-    });
-
-    // Bindeo dual (Slider + Number input sincronizados para teclado y cursor)
-    this.bindControl(section, 'posX', p, '%', { min: 0, max: 100, step: 1 });
-    this.bindControl(section, 'posY', p, '%', { min: 0, max: 100, step: 1 });
-    this.bindControl(section, 'size', p, 'px', { min: 20, max: 1000, step: 5 });
-    this.bindControl(section, 'sizeX', p, 'px', { min: 30, max: 1400, step: 10 });
-    this.bindControl(section, 'sizeY', p, 'px', { min: 30, max: 1400, step: 10 });
-    this.bindControl(section, 'copies', p, '', { min: 1, max: 800, step: 1 });
-    this.bindControl(section, 'stepX', p, 'px', { min: -150, max: 150, step: 1 });
-    this.bindControl(section, 'stepY', p, 'px', { min: -150, max: 150, step: 1 });
-    this.bindControl(section, 'angle', p, '°', {
-      min: 0,
-      max: 180,
-      step: 1,
-      onUpdate: (v) => {
-        angleChips.forEach(c => c.classList.toggle('active', parseFloat(c.dataset.angle) === v));
-      }
-    });
-    this.bindControl(section, 'scaleStep', p, '%', {
-      min: 50,
-      max: 150,
-      step: 0.2,
-      transform: (v) => v / 100,
-      reverse: (v) => Math.round(v * 100)
-    });
-    this.bindControl(section, 'rotateStep', p, '°', { min: -45, max: 45, step: 0.2 });
-    this.bindControl(section, 'moveX', p, 'px', { min: -20, max: 20, step: 0.5 });
-    this.bindControl(section, 'moveY', p, 'px', { min: -20, max: 20, step: 0.5 });
-    this.bindControl(section, 'jitter', p, 'px', { min: 0, max: 8, step: 0.1 });
-    this.bindControl(section, 'skipChance', p, '%', { min: 0, max: 60, step: 1 });
-    this.bindControl(section, 'lineSwappiness', p, '%', { min: 0, max: 60, step: 1 });
-    this.bindControl(section, 'waviness', p, 'px', { min: 0, max: 30, step: 1 });
-    this.bindControl(section, 'strokeWidth', p, 'px', { min: 0.2, max: 6.0, step: 0.1 });
-    this.bindControl(section, 'opacity', p, '%', {
-      min: 5,
-      max: 100,
-      step: 1,
-      transform: (v) => v / 100,
-      reverse: (v) => Math.round(v * 100)
-    });
-
-    this.container.appendChild(section);
-  }
-
-  renderSculptSection(state, engine) {
-    const section = document.createElement('div');
-    section.className = 'control-section';
-    section.innerHTML = `
-      <div class="section-title">✍️ 4. Esculpido Directo (Cursor)</div>
-      
-      <div class="control-group">
-        <label class="control-label">Herramienta de Pincel</label>
-        <div class="segmented-control" id="sculpt-mode-control">
-          <button type="button" class="segmented-btn ${state.brush.mode === 'peak' ? 'active' : ''}" data-mode="peak">▲ Pico</button>
-          <button type="button" class="segmented-btn ${state.brush.mode === 'smooth' ? 'active' : ''}" data-mode="smooth">∩ Colina</button>
-          <button type="button" class="segmented-btn ${state.brush.mode === 'twist' ? 'active' : ''}" data-mode="twist">🌀 Giro</button>
-          <button type="button" class="segmented-btn ${state.brush.mode === 'flatten' ? 'active' : ''}" data-mode="flatten">— Aplanar</button>
-        </div>
-      </div>
-
-      <div class="control-group">
-        <div class="control-header">
-          <label class="control-label" for="num-brushRadius">Radio del Pincel</label>
-          <div class="control-input-wrapper">
-            <input type="number" id="num-brushRadius" class="number-input" min="15" max="220" step="5" value="${state.brush.radius}">
-            <span class="unit-tag">px</span>
-          </div>
-        </div>
-        <input type="range" id="input-brushRadius" min="15" max="220" step="5" value="${state.brush.radius}">
-      </div>
-
-      <div class="control-group">
-        <div class="control-header">
-          <label class="control-label" for="num-brushStrength">Fuerza de Deformación</label>
-          <div class="control-input-wrapper">
-            <input type="number" id="num-brushStrength" class="number-input" min="5" max="160" step="5" value="${state.brush.strength}">
-            <span class="unit-tag">px</span>
-          </div>
-        </div>
-        <input type="range" id="input-brushStrength" min="5" max="160" step="5" value="${state.brush.strength}">
-      </div>
-
-      <div class="sculpt-actions-bar">
-        <button type="button" id="btn-undo" class="btn">↶ Deshacer</button>
-        <button type="button" id="btn-clear" class="btn">🗑️ Limpiar Trama</button>
-      </div>
-    `;
-
-    const modeBtns = section.querySelectorAll('#sculpt-mode-control .segmented-btn');
-    modeBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        modeBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        state.brush.mode = btn.dataset.mode;
-      });
-    });
-
-    this.bindControl(section, 'brushRadius', state.brush, 'px', { min: 15, max: 220, step: 5 });
-    this.bindControl(section, 'brushStrength', state.brush, 'px', { min: 5, max: 160, step: 5 });
-
-    section.querySelector('#btn-undo').addEventListener('click', () => {
-      if (this.onUndo) this.onUndo();
-    });
-
-    section.querySelector('#btn-clear').addEventListener('click', () => {
-      if (this.onClearDeformations) this.onClearDeformations();
-    });
-
-    this.container.appendChild(section);
-  }
-
-  renderDifferenceSection(state) {
-    const maxLayers = 3;
-    const count = (state.differenceLayers || []).length;
-
-    const section = document.createElement('div');
-    section.className = 'control-section';
-    section.innerHTML = `
-      <div class="section-title-between">
-        <span class="section-title">✨ 5. Capas de Diferencia (${count}/${maxLayers})</span>
-        ${count < maxLayers ? '<button type="button" id="btn-add-diff" class="btn btn-sm btn-primary">+ Añadir</button>' : ''}
-      </div>
-      <div id="diff-layers-container" class="diff-layers-list"></div>
-    `;
-
-    const list = section.querySelector('#diff-layers-container');
-
-    if (count === 0) {
-      list.innerHTML = `<p class="empty-hint">Sin capas de diferencia. Añade un sol, prisma geométrico o tipografía para crear contraste.</p>`;
-    } else {
-      state.differenceLayers.forEach((layer, idx) => {
-        const card = document.createElement('div');
-        card.className = 'diff-card';
-        card.innerHTML = `
-          <div class="diff-card-header">
-            <span class="diff-card-title">Capa ${idx + 1}: ${layer.name || layer.type}</span>
-            <button type="button" class="btn-icon-xs btn-remove-layer" title="Eliminar capa">✕</button>
-          </div>
-          
-          <div class="diff-card-body">
-            <div class="control-group">
-              <label class="control-label-sm">Elemento</label>
-              <div class="segmented-control seg-type">
-                <button type="button" class="segmented-btn ${layer.type === 'circle' ? 'active' : ''}" data-type="circle">Círculo</button>
-                <button type="button" class="segmented-btn ${layer.type === 'rectangle' ? 'active' : ''}" data-type="rectangle">Marco</button>
-                <button type="button" class="segmented-btn ${layer.type === 'polygon' ? 'active' : ''}" data-type="polygon">Polígono</button>
-                <button type="button" class="segmented-btn ${layer.type === 'text' ? 'active' : ''}" data-type="text">Texto</button>
-              </div>
-            </div>
-
-            <div class="control-group">
-              <label class="control-label-sm">Profundidad</label>
-              <div class="segmented-control seg-placement">
-                <button type="button" class="segmented-btn ${layer.placement === 'behind' ? 'active' : ''}" data-place="behind">Detrás</button>
-                <button type="button" class="segmented-btn ${layer.placement === 'in-front' ? 'active' : ''}" data-place="in-front">Delante</button>
-              </div>
-            </div>
-
-            ${layer.type === 'text' ? `
-            <div class="control-group">
-              <label class="control-label-sm">Glifo / Texto</label>
-              <input type="text" class="text-input" value="${layer.text || 'A'}" maxlength="8">
-            </div>
-            ` : ''}
-
-            <div class="control-group">
-              <div class="control-header">
-                <label class="control-label-sm">Tamaño</label>
-                <div class="control-input-wrapper">
-                  <input type="number" class="number-input input-num-size" min="30" max="400" step="5" value="${layer.size}">
-                  <span class="unit-tag">px</span>
-                </div>
-              </div>
-              <input type="range" class="input-size" min="30" max="400" step="5" value="${layer.size}">
-            </div>
-
-            <div class="dual-slider-row">
-              <div class="control-group flex-1">
-                <div class="control-header">
-                  <label class="control-label-sm">Pos X</label>
-                  <div class="control-input-wrapper">
-                    <input type="number" class="number-input input-num-x" min="5" max="95" step="1" value="${layer.x}">
-                    <span class="unit-tag">%</span>
-                  </div>
-                </div>
-                <input type="range" class="input-x" min="5" max="95" step="1" value="${layer.x}">
-              </div>
-              <div class="control-group flex-1">
-                <div class="control-header">
-                  <label class="control-label-sm">Pos Y</label>
-                  <div class="control-input-wrapper">
-                    <input type="number" class="number-input input-num-y" min="5" max="95" step="1" value="${layer.y}">
-                    <span class="unit-tag">%</span>
-                  </div>
-                </div>
-                <input type="range" class="input-y" min="5" max="95" step="1" value="${layer.y}">
-              </div>
-            </div>
-          </div>
-        `;
-
-        // Bindeo de capa
-        const segTypes = card.querySelectorAll('.seg-type .segmented-btn');
-        segTypes.forEach(btn => {
-          btn.addEventListener('click', () => {
-            segTypes.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            layer.type = btn.dataset.type;
-            this.renderDifferenceSection(state);
-            this.notifyChange();
-          });
-        });
-
-        const segPlace = card.querySelectorAll('.seg-placement .segmented-btn');
-        segPlace.forEach(btn => {
-          btn.addEventListener('click', () => {
-            segPlace.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            layer.placement = btn.dataset.place;
-            this.notifyChange();
-          });
-        });
-
-        const textIn = card.querySelector('.text-input');
-        if (textIn) {
-          textIn.addEventListener('input', (e) => {
-            layer.text = e.target.value;
-            this.notifyChange();
-          });
-        }
-
-        const sizeSlider = card.querySelector('.input-size');
-        const sizeNum = card.querySelector('.input-num-size');
-        if (sizeSlider && sizeNum) {
-          sizeSlider.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            layer.size = val;
-            sizeNum.value = val;
-            this.notifyChange();
-          });
-          sizeNum.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            if (!Number.isNaN(val)) {
-              layer.size = val;
-              sizeSlider.value = val;
-              this.notifyChange();
-            }
-          });
-        }
-
-        const xSlider = card.querySelector('.input-x');
-        const xNum = card.querySelector('.input-num-x');
-        if (xSlider && xNum) {
-          xSlider.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            layer.x = val;
-            xNum.value = val;
-            this.notifyChange();
-          });
-          xNum.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            if (!Number.isNaN(val)) {
-              layer.x = val;
-              xSlider.value = val;
-              this.notifyChange();
-            }
-          });
-        }
-
-        const ySlider = card.querySelector('.input-y');
-        const yNum = card.querySelector('.input-num-y');
-        if (ySlider && yNum) {
-          ySlider.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            layer.y = val;
-            yNum.value = val;
-            this.notifyChange();
-          });
-          yNum.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            if (!Number.isNaN(val)) {
-              layer.y = val;
-              ySlider.value = val;
-              this.notifyChange();
-            }
-          });
-        }
-
-        card.querySelector('.btn-remove-layer').addEventListener('click', () => {
-          state.differenceLayers.splice(idx, 1);
-          this.renderDifferenceSection(state);
+      // Mover arriba
+      const btnUp = item.querySelector('.btn-layer-up');
+      if (btnUp && idx < state.layers.length - 1) {
+        btnUp.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const temp = state.layers[idx];
+          state.layers[idx] = state.layers[idx + 1];
+          state.layers[idx + 1] = temp;
+          this.render(state);
           this.notifyChange();
-          UIManager.showToast('Capa eliminada');
         });
+      }
 
-        list.appendChild(card);
-      });
+      // Mover abajo
+      const btnDown = item.querySelector('.btn-layer-down');
+      if (btnDown && idx > 0) {
+        btnDown.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const temp = state.layers[idx];
+          state.layers[idx] = state.layers[idx - 1];
+          state.layers[idx - 1] = temp;
+          this.render(state);
+          this.notifyChange();
+        });
+      }
+
+      // Eliminar capa
+      const btnDel = item.querySelector('.layer-delete-btn');
+      if (btnDel && state.layers.length > 1) {
+        btnDel.addEventListener('click', (e) => {
+          e.stopPropagation();
+          state.layers.splice(idx, 1);
+          if (state.activeLayerId === layer.id) {
+            state.activeLayerId = state.layers[state.layers.length - 1].id;
+          }
+          this.render(state);
+          this.notifyChange();
+          UIManager.showToast('🗑️ Capa eliminada');
+        });
+      }
+
+      list.appendChild(item);
     }
 
-    const addBtn = section.querySelector('#btn-add-diff');
-    if (addBtn) {
-      addBtn.addEventListener('click', () => {
-        if (state.differenceLayers.length >= maxLayers) return;
-        const newLayer = {
-          id: `diff-${Date.now()}`,
-          name: `Elemento ${state.differenceLayers.length + 1}`,
-          active: true,
-          type: 'circle',
-          placement: 'behind',
-          x: 50,
-          y: 50,
-          size: 110,
-          color: '#27272a',
-          opacity: 0.9,
-          blendMode: 'normal'
-        };
-        state.differenceLayers.push(newLayer);
-        this.renderDifferenceSection(state);
+    this.layersContainer.appendChild(list);
+
+    // Sección de Presets al pie de las capas
+    const presetsSection = document.createElement('div');
+    presetsSection.className = 'panel-presets-footer';
+    presetsSection.innerHTML = `
+      <div class="panel-subtitle">Presets de Composición</div>
+      <div class="presets-quick-grid" id="presets-quick-container"></div>
+    `;
+    const pContainer = presetsSection.querySelector('#presets-quick-container');
+    PRESETS.forEach(preset => {
+      const pBtn = document.createElement('button');
+      pBtn.className = 'preset-chip-btn';
+      pBtn.textContent = preset.name;
+      pBtn.title = preset.description;
+      pBtn.addEventListener('click', () => {
+        // Cargar estado del preset clonado
+        state.canvas = JSON.parse(JSON.stringify(preset.state.canvas));
+        state.layers = JSON.parse(JSON.stringify(preset.state.layers));
+        state.activeLayerId = state.layers[0]?.id;
+        this.render(state);
         this.notifyChange();
-        UIManager.showToast('✨ Capa de diferencia añadida');
+        UIManager.showToast(`✨ Preset cargado: ${preset.name}`);
       });
+      pContainer.appendChild(pBtn);
+    });
+    this.layersContainer.appendChild(presetsSection);
+
+    // Eventos de botones de creación
+    header.querySelector('#btn-add-pattern').addEventListener('click', () => {
+      const newId = `layer-${Date.now().toString().slice(-4)}`;
+      const newLayer = {
+        id: newId,
+        name: `Patrón ${state.layers.length + 1}`,
+        type: 'pattern',
+        visible: true,
+        opacity: 100,
+        blendMode: state.layers.length > 0 ? 'difference' : 'source-over',
+        shape: 'circle',
+        width: 60,
+        height: 60,
+        rotation: 0,
+        offsetX: 0,
+        offsetY: 0,
+        color: '#f4f4f5',
+        strokeWidth: 1.4,
+        fillMode: 'stroke',
+        distribution: 'polar',
+        polar: { scheme: 'centrifugal', rays: 36, rings: 5, radius: 0.42, spiralTwist: 0 },
+        cartesian: { gridType: 'basic', cols: 6, rows: 6 },
+        linear: { copies: 36, angle: 0, waviness: 0 },
+        gradation: { enabled: false },
+        anomaly: { enabled: false },
+        similarity: { enabled: false },
+        concentration: { enabled: false },
+        space: { enabled: false },
+        jitter: 0
+      };
+      state.layers.push(newLayer);
+      state.activeLayerId = newId;
+      this.render(state);
+      this.notifyChange();
+      UIManager.showToast('➕ Nueva capa de patrón creada');
+    });
+
+    header.querySelector('#btn-add-accent').addEventListener('click', () => {
+      const newId = `layer-${Date.now().toString().slice(-4)}`;
+      const newLayer = {
+        id: newId,
+        name: `Acento ${state.layers.length + 1}`,
+        type: 'element',
+        visible: true,
+        opacity: 90,
+        blendMode: 'source-over',
+        shape: 'circle',
+        size: 200,
+        posX: 50,
+        posY: 50,
+        rotation: 0,
+        color: '#ef4444',
+        strokeWidth: 2,
+        fillMode: 'fill'
+      };
+      state.layers.push(newLayer);
+      state.activeLayerId = newId;
+      this.render(state);
+      this.notifyChange();
+      UIManager.showToast('➕ Capa de acento agregada');
+    });
+
+    moireBar.querySelector('#btn-quick-moire').addEventListener('click', () => {
+      // Reemplazar o añadir configuración Moiré dual
+      const idA = `layer-${Date.now()}-a`;
+      const idB = `layer-${Date.now()}-b`;
+      state.layers = [
+        {
+          id: idA,
+          name: 'Moiré Radial A',
+          type: 'pattern',
+          visible: true,
+          opacity: 100,
+          blendMode: 'source-over',
+          shape: 'line',
+          width: 50,
+          height: 50,
+          rotation: 0,
+          offsetX: 0,
+          offsetY: 0,
+          color: '#f4f4f5',
+          strokeWidth: 1.2,
+          fillMode: 'stroke',
+          distribution: 'polar',
+          polar: { scheme: 'centrifugal', rays: 48, rings: 5, radius: 0.44 },
+          jitter: 0
+        },
+        {
+          id: idB,
+          name: 'Moiré Radial B (Rotado)',
+          type: 'pattern',
+          visible: true,
+          opacity: 100,
+          blendMode: 'difference',
+          shape: 'line',
+          width: 50,
+          height: 50,
+          rotation: 5.0,
+          offsetX: 0,
+          offsetY: 0,
+          color: '#f4f4f5',
+          strokeWidth: 1.2,
+          fillMode: 'stroke',
+          distribution: 'polar',
+          polar: { scheme: 'centrifugal', rays: 48, rings: 5, radius: 0.44 },
+          jitter: 0
+        }
+      ];
+      state.activeLayerId = idB;
+      this.render(state);
+      this.notifyChange();
+      UIManager.showToast('✨ Par Moiré interactivo creado');
+    });
+  }
+
+  // =========================================================================
+  // 2. INSPECTOR DE PROPIEDADES (COLUMNA DERECHA - FIGMA STYLE)
+  // =========================================================================
+
+  renderInspector(state) {
+    if (!this.inspectorContainer) return;
+    this.inspectorContainer.innerHTML = '';
+
+    const activeLayer = state.layers.find(l => l.id === state.activeLayerId) || state.layers[0];
+    if (!activeLayer) {
+      this.inspectorContainer.innerHTML = '<div class="empty-inspector">Selecciona una capa para editar</div>';
+      return;
     }
 
-    this.container.appendChild(section);
+    // Cabecera de la capa seleccionada
+    const layerHeader = document.createElement('div');
+    layerHeader.className = 'inspector-header';
+    layerHeader.innerHTML = `
+      <div class="inspector-header-row">
+        <input type="text" id="active-layer-name" class="layer-title-input" value="${activeLayer.name}" title="Editar nombre de capa">
+        <span class="inspector-badge">${activeLayer.type === 'pattern' ? 'Generativo' : 'Elemento'}</span>
+      </div>
+      
+      <div class="property-grid">
+        <div class="property-field">
+          <label class="field-label">Opacidad</label>
+          <div class="dual-input">
+            <input type="range" id="input-layer-opacity" min="0" max="100" value="${activeLayer.opacity ?? 100}">
+            <input type="number" id="num-layer-opacity" class="mini-num" min="0" max="100" value="${activeLayer.opacity ?? 100}">
+          </div>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Modo de Fusión (Moiré)</label>
+          <select id="select-layer-blend" class="field-select">
+            <option value="source-over" ${activeLayer.blendMode === 'source-over' ? 'selected' : ''}>Normal</option>
+            <option value="difference" ${activeLayer.blendMode === 'difference' ? 'selected' : ''}>Diferencia (Moiré)</option>
+            <option value="screen" ${activeLayer.blendMode === 'screen' ? 'selected' : ''}>Trama (Screen)</option>
+            <option value="multiply" ${activeLayer.blendMode === 'multiply' ? 'selected' : ''}>Multiplicar</option>
+            <option value="overlay" ${activeLayer.blendMode === 'overlay' ? 'selected' : ''}>Superponer</option>
+          </select>
+        </div>
+      </div>
+    `;
+
+    // Sincronizar nombre
+    const nameInput = layerHeader.querySelector('#active-layer-name');
+    nameInput.addEventListener('change', () => {
+      activeLayer.name = nameInput.value.trim() || 'Capa';
+      this.renderLayersPanel(state);
+      this.notifyChange();
+    });
+
+    // Opacidad
+    this.bindRangeNum(
+      layerHeader,
+      '#input-layer-opacity',
+      '#num-layer-opacity',
+      val => {
+        activeLayer.opacity = parseInt(val, 10);
+        this.notifyChange();
+      }
+    );
+
+    // Blend mode
+    layerHeader.querySelector('#select-layer-blend').addEventListener('change', (e) => {
+      activeLayer.blendMode = e.target.value;
+      this.renderLayersPanel(state);
+      this.notifyChange();
+    });
+
+    this.inspectorContainer.appendChild(layerHeader);
+
+    // Renderizar propiedades según el tipo de capa
+    if (activeLayer.type === 'pattern') {
+      this.renderPatternProperties(activeLayer, state);
+    } else {
+      this.renderElementProperties(activeLayer, state);
+    }
   }
 
   /**
-   * Bindeo dual para controles numéricos: Slider (Range) + Teclado (Number Input)
+   * Propiedades de Capa de Patrón Generativo
    */
-  bindControl(container, key, targetObj, unit = '', options = {}) {
-    const rangeInput = container.querySelector(`#input-${key}`);
-    const numInput = container.querySelector(`#num-${key}`);
-    const transform = options.transform || ((v) => v);
-    const reverse = options.reverse || ((v) => v);
+  renderPatternProperties(layer, state) {
+    const container = document.createElement('div');
+    container.className = 'inspector-sections-stack';
 
-    if (rangeInput) {
-      rangeInput.addEventListener('input', (e) => {
-        const val = parseFloat(e.target.value);
-        if (Number.isNaN(val)) return;
-        targetObj[key] = transform(val);
-        if (numInput) {
-          numInput.value = val;
-        }
-        if (options.onUpdate) options.onUpdate(val);
+    // 1. FORMA Y GEOMETRÍA PRIMITIVA
+    const shapeBlock = document.createElement('div').attachTo(container, 'inspector-block');
+    shapeBlock.innerHTML = `
+      <div class="block-title">Módulo & Geometría</div>
+      <div class="shape-picker-grid" id="shape-selector-grid"></div>
+
+      <div class="property-grid pt-2">
+        <div class="property-field">
+          <label class="field-label">Ancho</label>
+          <div class="dual-input">
+            <input type="range" id="input-layer-width" min="10" max="300" value="${layer.width || 60}">
+            <input type="number" id="num-layer-width" class="mini-num" min="10" max="300" value="${layer.width || 60}">
+          </div>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Alto</label>
+          <div class="dual-input">
+            <input type="range" id="input-layer-height" min="10" max="300" value="${layer.height || 60}">
+            <input type="number" id="num-layer-height" class="mini-num" min="10" max="300" value="${layer.height || 60}">
+          </div>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Rotación (°)</label>
+          <div class="dual-input">
+            <input type="range" id="input-layer-rotation" min="0" max="360" step="0.5" value="${layer.rotation || 0}">
+            <input type="number" id="num-layer-rotation" class="mini-num" min="0" max="360" step="0.5" value="${layer.rotation || 0}">
+          </div>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Grosor Trazo</label>
+          <div class="dual-input">
+            <input type="range" id="input-layer-stroke" min="0.5" max="10" step="0.2" value="${layer.strokeWidth || 1.4}">
+            <input type="number" id="num-layer-stroke" class="mini-num" min="0.5" max="10" step="0.2" value="${layer.strokeWidth || 1.4}">
+          </div>
+        </div>
+      </div>
+
+      <div class="property-grid pt-1">
+        <div class="property-field">
+          <label class="field-label">Relleno / Trazo</label>
+          <div class="segmented-control">
+            <button class="seg-btn ${layer.fillMode !== 'fill' ? 'active' : ''}" data-fill="stroke">Trazo</button>
+            <button class="seg-btn ${layer.fillMode === 'fill' ? 'active' : ''}" data-fill="fill">Relleno</button>
+          </div>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Color de Forma</label>
+          <input type="color" id="input-layer-color" class="color-picker-input" value="${layer.color || '#f4f4f5'}">
+        </div>
+      </div>
+    `;
+
+    // Inyectar iconos de las 20 formas en el grid
+    const shapeGrid = shapeBlock.querySelector('#shape-selector-grid');
+    SHAPE_KEYS.forEach(key => {
+      const s = Shapes[key];
+      const btn = document.createElement('button');
+      btn.className = `shape-btn ${layer.shape === key ? 'active' : ''}`;
+      btn.innerHTML = s.iconSvg;
+      btn.title = s.name;
+      btn.addEventListener('click', () => {
+        layer.shape = key;
+        shapeGrid.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.renderLayersPanel(state);
         this.notifyChange();
       });
-    }
+      shapeGrid.appendChild(btn);
+    });
 
-    if (numInput) {
-      const handleNum = (e) => {
-        let val = parseFloat(e.target.value);
-        if (Number.isNaN(val)) return;
-        if (options.min !== undefined && val < options.min) val = options.min;
-        if (options.max !== undefined && val > options.max) val = options.max;
-        targetObj[key] = transform(val);
-        if (rangeInput) {
-          rangeInput.value = reverse(val);
-        }
-        if (options.onUpdate) options.onUpdate(val);
+    // Binds de tamaño y rotación
+    this.bindRangeNum(shapeBlock, '#input-layer-width', '#num-layer-width', val => {
+      layer.width = parseFloat(val);
+      this.notifyChange();
+    });
+    this.bindRangeNum(shapeBlock, '#input-layer-height', '#num-layer-height', val => {
+      layer.height = parseFloat(val);
+      this.notifyChange();
+    });
+    this.bindRangeNum(shapeBlock, '#input-layer-rotation', '#num-layer-rotation', val => {
+      layer.rotation = parseFloat(val);
+      this.notifyChange();
+    });
+    this.bindRangeNum(shapeBlock, '#input-layer-stroke', '#num-layer-stroke', val => {
+      layer.strokeWidth = parseFloat(val);
+      this.notifyChange();
+    });
+
+    // Fill mode
+    shapeBlock.querySelectorAll('.seg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        shapeBlock.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        layer.fillMode = btn.dataset.fill;
         this.notifyChange();
-      };
+      });
+    });
 
-      numInput.addEventListener('input', handleNum);
-      numInput.addEventListener('change', handleNum);
+    // Color
+    shapeBlock.querySelector('#input-layer-color').addEventListener('input', (e) => {
+      layer.color = e.target.value;
+      this.notifyChange();
+    });
+
+    // 2. DISTRIBUCIÓN ESPACIAL
+    const distBlock = document.createElement('div').attachTo(container, 'inspector-block');
+    const curDist = layer.distribution || 'cartesian';
+    distBlock.innerHTML = `
+      <div class="block-title">Distribución Espacial</div>
+      <div class="segmented-control mb-3">
+        <button class="seg-btn ${curDist === 'cartesian' ? 'active' : ''}" data-dist="cartesian">Cartesiana</button>
+        <button class="seg-btn ${curDist === 'polar' ? 'active' : ''}" data-dist="polar">Polar / Radiación</button>
+        <button class="seg-btn ${curDist === 'linear' ? 'active' : ''}" data-dist="linear">Lineal</button>
+      </div>
+
+      <div id="distribution-params-container"></div>
+    `;
+
+    distBlock.querySelectorAll('.segmented-control .seg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        layer.distribution = btn.dataset.dist;
+        this.renderLayersPanel(state);
+        this.renderInspector(state);
+        this.notifyChange();
+      });
+    });
+
+    const distParams = distBlock.querySelector('#distribution-params-container');
+    if (curDist === 'polar') {
+      this.renderPolarControls(distParams, layer);
+    } else if (curDist === 'linear') {
+      this.renderLinearControls(distParams, layer);
+    } else {
+      this.renderCartesianControls(distParams, layer);
     }
+
+    // 3. MODULADORES PARAMÉTRICOS
+    const modBlock = document.createElement('div').attachTo(container, 'inspector-block');
+    modBlock.innerHTML = `<div class="block-title">Moduladores Paramétricos</div>`;
+
+    // Gradación
+    this.createModifierAccordion(modBlock, 'Gradación', layer.gradation, (content, mod) => {
+      content.innerHTML = `
+        <div class="property-grid">
+          <div class="property-field">
+            <label class="field-label">Tipo</label>
+            <select id="grad-type" class="field-select">
+              <option value="rotation" ${mod.type === 'rotation' ? 'selected' : ''}>Rotación</option>
+              <option value="scale" ${mod.type === 'scale' ? 'selected' : ''}>Escala</option>
+            </select>
+          </div>
+          <div class="property-field">
+            <label class="field-label">Dirección</label>
+            <select id="grad-path" class="field-select">
+              <option value="diagonal" ${mod.pathway === 'diagonal' ? 'selected' : ''}>Diagonal</option>
+              <option value="horizontal" ${mod.pathway === 'horizontal' ? 'selected' : ''}>Horizontal</option>
+              <option value="vertical" ${mod.pathway === 'vertical' ? 'selected' : ''}>Vertical</option>
+              <option value="concentric" ${mod.pathway === 'concentric' ? 'selected' : ''}>Concéntrico</option>
+            </select>
+          </div>
+          <div class="property-field col-span-2">
+            <label class="field-label">Rango (° o %) </label>
+            <div class="dual-input">
+              <input type="range" id="grad-range" min="30" max="360" value="${mod.range || 180}">
+              <input type="number" id="grad-range-num" class="mini-num" min="30" max="360" value="${mod.range || 180}">
+            </div>
+          </div>
+        </div>
+      `;
+      content.querySelector('#grad-type').addEventListener('change', e => { mod.type = e.target.value; this.notifyChange(); });
+      content.querySelector('#grad-path').addEventListener('change', e => { mod.pathway = e.target.value; this.notifyChange(); });
+      this.bindRangeNum(content, '#grad-range', '#grad-range-num', val => { mod.range = parseFloat(val); this.notifyChange(); });
+    });
+
+    // Anomalía Focal
+    this.createModifierAccordion(modBlock, 'Anomalía Focal', layer.anomaly, (content, mod) => {
+      content.innerHTML = `
+        <div class="property-grid">
+          <div class="property-field col-span-2">
+            <label class="field-label">Radio de Perturbación</label>
+            <div class="dual-input">
+              <input type="range" id="anom-radius" min="50" max="400" value="${mod.radius || 180}">
+              <input type="number" id="anom-radius-num" class="mini-num" min="50" max="400" value="${mod.radius || 180}">
+            </div>
+          </div>
+          <div class="property-field">
+            <label class="field-label">Forma Anómala</label>
+            <select id="anom-shape" class="field-select">
+              <option value="triangle_eq" ${mod.shape === 'triangle_eq' ? 'selected' : ''}>Triángulo</option>
+              <option value="star4" ${mod.shape === 'star4' ? 'selected' : ''}>Estrella</option>
+              <option value="rhombus" ${mod.shape === 'rhombus' ? 'selected' : ''}>Rombo</option>
+              <option value="circle" ${mod.shape === 'circle' ? 'selected' : ''}>Círculo</option>
+            </select>
+          </div>
+          <div class="property-field">
+            <label class="field-label">Resaltar Carmesí</label>
+            <input type="checkbox" id="anom-highlight" ${mod.highlightColor ? 'checked' : ''} class="mt-2">
+          </div>
+        </div>
+      `;
+      this.bindRangeNum(content, '#anom-radius', '#anom-radius-num', val => { mod.radius = parseFloat(val); this.notifyChange(); });
+      content.querySelector('#anom-shape').addEventListener('change', e => { mod.shape = e.target.value; this.notifyChange(); });
+      content.querySelector('#anom-highlight').addEventListener('change', e => { mod.highlightColor = e.target.checked; this.notifyChange(); });
+    });
+
+    // Concentración Gravitatoria
+    this.createModifierAccordion(modBlock, 'Concentración Gravitatoria', layer.concentration, (content, mod) => {
+      content.innerHTML = `
+        <div class="property-grid">
+          <div class="property-field">
+            <label class="field-label">Modo</label>
+            <select id="conc-mode" class="field-select">
+              <option value="point" ${mod.mode === 'point' ? 'selected' : ''}>Punto (Atracción)</option>
+              <option value="void" ${mod.mode === 'void' ? 'selected' : ''}>Vacío (Repulsión)</option>
+            </select>
+          </div>
+          <div class="property-field">
+            <label class="field-label">Fuerza</label>
+            <div class="dual-input">
+              <input type="range" id="conc-power" min="10" max="100" value="${mod.power || 65}">
+              <input type="number" id="conc-power-num" class="mini-num" min="10" max="100" value="${mod.power || 65}">
+            </div>
+          </div>
+        </div>
+      `;
+      content.querySelector('#conc-mode').addEventListener('change', e => { mod.mode = e.target.value; this.notifyChange(); });
+      this.bindRangeNum(content, '#conc-power', '#conc-power-num', val => { mod.power = parseFloat(val); this.notifyChange(); });
+    });
+
+    // Espacio Isométrico 3D
+    this.createModifierAccordion(modBlock, 'Espacio Isométrico 3D', layer.space, (content, mod) => {
+      content.innerHTML = `
+        <div class="property-grid">
+          <div class="property-field">
+            <label class="field-label">Profundidad Extrusión</label>
+            <div class="dual-input">
+              <input type="range" id="space-depth" min="5" max="80" value="${mod.depth || 25}">
+              <input type="number" id="space-depth-num" class="mini-num" min="5" max="80" value="${mod.depth || 25}">
+            </div>
+          </div>
+          <div class="property-field">
+            <label class="field-label">Ángulo Proyección</label>
+            <div class="dual-input">
+              <input type="range" id="space-angle" min="-60" max="60" value="${mod.angle || 30}">
+              <input type="number" id="space-angle-num" class="mini-num" min="-60" max="60" value="${mod.angle || 30}">
+            </div>
+          </div>
+        </div>
+      `;
+      this.bindRangeNum(content, '#space-depth', '#space-depth-num', val => { mod.depth = parseFloat(val); this.notifyChange(); });
+      this.bindRangeNum(content, '#space-angle', '#space-angle-num', val => { mod.angle = parseFloat(val); this.notifyChange(); });
+    });
+
+    // 4. TEXTURA ANALÓGICA & ESCULPIDO DIRECTO
+    const textureBlock = document.createElement('div').attachTo(container, 'inspector-block');
+    textureBlock.innerHTML = `
+      <div class="block-title">Textura & Esculpido Manual</div>
+      
+      <div class="property-field mb-3">
+        <label class="field-label">Micro-corrugado / Jitter (Papel Washi)</label>
+        <div class="dual-input">
+          <input type="range" id="input-layer-jitter" min="0" max="6" step="0.2" value="${layer.jitter || 0}">
+          <input type="number" id="num-layer-jitter" class="mini-num" min="0" max="6" step="0.2" value="${layer.jitter || 0}">
+        </div>
+      </div>
+
+      <div class="sculpt-tools-card">
+        <div class="flex items-center justify-between mb-2">
+          <span class="field-label font-bold">Pincel de Esculpido</span>
+          <button id="toggle-brush-btn" class="btn-brush-toggle ${state.brushActive ? 'active' : ''}">
+            ${state.brushActive ? 'Pincel Activo' : 'Activar Pincel'}
+          </button>
+        </div>
+
+        <div class="brush-modes-grid mb-2">
+          <button class="brush-mode-btn ${state.brush.mode === 'peak' ? 'active' : ''}" data-mode="peak" title="Cresta afilada">▲ Pico</button>
+          <button class="brush-mode-btn ${state.brush.mode === 'smooth' ? 'active' : ''}" data-mode="smooth" title="Colina suave">∩ Suave</button>
+          <button class="brush-mode-btn ${state.brush.mode === 'twist' ? 'active' : ''}" data-mode="twist" title="Vórtice">🌀 Giro</button>
+        </div>
+
+        <div class="property-grid mb-2">
+          <div class="property-field">
+            <label class="field-label">Radio Pincel</label>
+            <input type="range" id="brush-radius" min="30" max="180" value="${state.brush.radius || 75}">
+          </div>
+          <div class="property-field">
+            <label class="field-label">Fuerza</label>
+            <input type="range" id="brush-strength" min="10" max="100" value="${state.brush.strength || 60}">
+          </div>
+        </div>
+
+        <div class="flex gap-2">
+          <button id="btn-undo-sculpt" class="btn-sub flex-1">↶ Deshacer</button>
+          <button id="btn-clear-sculpt" class="btn-sub flex-1">🗑 Limpiar</button>
+        </div>
+      </div>
+    `;
+
+    this.bindRangeNum(textureBlock, '#input-layer-jitter', '#num-layer-jitter', val => {
+      layer.jitter = parseFloat(val);
+      this.notifyChange();
+    });
+
+    const brushToggle = textureBlock.querySelector('#toggle-brush-btn');
+    brushToggle.addEventListener('click', () => {
+      state.brushActive = !state.brushActive;
+      brushToggle.classList.toggle('active', state.brushActive);
+      brushToggle.textContent = state.brushActive ? 'Pincel Activo' : 'Activar Pincel';
+      this.notifyChange();
+    });
+
+    textureBlock.querySelectorAll('.brush-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        textureBlock.querySelectorAll('.brush-mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.brush.mode = btn.dataset.mode;
+        this.notifyChange();
+      });
+    });
+
+    textureBlock.querySelector('#brush-radius').addEventListener('input', e => {
+      state.brush.radius = parseFloat(e.target.value);
+    });
+    textureBlock.querySelector('#brush-strength').addEventListener('input', e => {
+      state.brush.strength = parseFloat(e.target.value);
+    });
+
+    textureBlock.querySelector('#btn-undo-sculpt').addEventListener('click', () => {
+      if (this.onUndoDeformation) this.onUndoDeformation();
+    });
+    textureBlock.querySelector('#btn-clear-sculpt').addEventListener('click', () => {
+      if (this.onClearDeformations) this.onClearDeformations();
+    });
+
+    this.inspectorContainer.appendChild(container);
   }
 
-  notifyChange() {
-    if (this.onStateChange) {
-      this.onStateChange();
-    }
+  renderCartesianControls(container, layer) {
+    if (!layer.cartesian) layer.cartesian = { gridType: 'basic', cols: 6, rows: 6 };
+    const cart = layer.cartesian;
+
+    container.innerHTML = `
+      <div class="property-grid">
+        <div class="property-field">
+          <label class="field-label">Tipo de Retícula</label>
+          <select id="cart-grid-type" class="field-select">
+            <option value="basic" ${cart.gridType === 'basic' ? 'selected' : ''}>Básica (Ortogonal)</option>
+            <option value="sliding" ${cart.gridType === 'sliding' ? 'selected' : ''}>Deslizante</option>
+            <option value="sheared" ${cart.gridType === 'sheared' ? 'selected' : ''}>Cizallada</option>
+            <option value="zigzag" ${cart.gridType === 'zigzag' ? 'selected' : ''}>Zigzag</option>
+            <option value="curved" ${cart.gridType === 'curved' ? 'selected' : ''}>Curva Armónica</option>
+          </select>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Columnas</label>
+          <div class="dual-input">
+            <input type="range" id="cart-cols" min="1" max="24" value="${cart.cols || 6}">
+            <input type="number" id="cart-cols-num" class="mini-num" min="1" max="24" value="${cart.cols || 6}">
+          </div>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Filas</label>
+          <div class="dual-input">
+            <input type="range" id="cart-rows" min="1" max="24" value="${cart.rows || 6}">
+            <input type="number" id="cart-rows-num" class="mini-num" min="1" max="24" value="${cart.rows || 6}">
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.querySelector('#cart-grid-type').addEventListener('change', e => {
+      cart.gridType = e.target.value;
+      this.notifyChange();
+    });
+
+    this.bindRangeNum(container, '#cart-cols', '#cart-cols-num', val => {
+      cart.cols = parseInt(val, 10);
+      this.notifyChange();
+    });
+    this.bindRangeNum(container, '#cart-rows', '#cart-rows-num', val => {
+      cart.rows = parseInt(val, 10);
+      this.notifyChange();
+    });
   }
 
-  static showToast(message, duration = 2500) {
-    let toast = document.getElementById('global-toast');
+  renderPolarControls(container, layer) {
+    if (!layer.polar) layer.polar = { scheme: 'centrifugal', rays: 36, rings: 5, radius: 0.42, spiralTwist: 0 };
+    const polar = layer.polar;
+
+    container.innerHTML = `
+      <div class="property-grid">
+        <div class="property-field">
+          <label class="field-label">Esquema Polar</label>
+          <select id="polar-scheme" class="field-select">
+            <option value="centrifugal" ${polar.scheme === 'centrifugal' ? 'selected' : ''}>Centrífugo (Rayos)</option>
+            <option value="concentric" ${polar.scheme === 'concentric' ? 'selected' : ''}>Concéntrico (Anillos)</option>
+            <option value="spiral" ${polar.scheme === 'spiral' ? 'selected' : ''}>Espiral Dinámica</option>
+          </select>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Número de Rayos (Frecuencia)</label>
+          <div class="dual-input">
+            <input type="range" id="polar-rays" min="4" max="96" value="${polar.rays || 36}">
+            <input type="number" id="polar-rays-num" class="mini-num" min="4" max="96" value="${polar.rays || 36}">
+          </div>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Anillos Radiales</label>
+          <div class="dual-input">
+            <input type="range" id="polar-rings" min="1" max="18" value="${polar.rings || 5}">
+            <input type="number" id="polar-rings-num" class="mini-num" min="1" max="18" value="${polar.rings || 5}">
+          </div>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Radio Cobertura</label>
+          <div class="dual-input">
+            <input type="range" id="polar-radius" min="0.1" max="0.55" step="0.01" value="${polar.radius || 0.42}">
+            <input type="number" id="polar-radius-num" class="mini-num" min="0.1" max="0.55" step="0.01" value="${polar.radius || 0.42}">
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.querySelector('#polar-scheme').addEventListener('change', e => {
+      polar.scheme = e.target.value;
+      this.notifyChange();
+    });
+
+    this.bindRangeNum(container, '#polar-rays', '#polar-rays-num', val => {
+      polar.rays = parseInt(val, 10);
+      this.notifyChange();
+    });
+    this.bindRangeNum(container, '#polar-rings', '#polar-rings-num', val => {
+      polar.rings = parseInt(val, 10);
+      this.notifyChange();
+    });
+    this.bindRangeNum(container, '#polar-radius', '#polar-radius-num', val => {
+      polar.radius = parseFloat(val);
+      this.notifyChange();
+    });
+  }
+
+  renderLinearControls(container, layer) {
+    if (!layer.linear) layer.linear = { copies: 36, angle: 0, waviness: 0 };
+    const lin = layer.linear;
+
+    container.innerHTML = `
+      <div class="property-grid">
+        <div class="property-field">
+          <label class="field-label">Copias de Líneas</label>
+          <div class="dual-input">
+            <input type="range" id="lin-copies" min="2" max="120" value="${lin.copies || 36}">
+            <input type="number" id="lin-copies-num" class="mini-num" min="2" max="120" value="${lin.copies || 36}">
+          </div>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Ángulo de Inclinación (°)</label>
+          <div class="dual-input">
+            <input type="range" id="lin-angle" min="0" max="180" value="${lin.angle || 0}">
+            <input type="number" id="lin-angle-num" class="mini-num" min="0" max="180" value="${lin.angle || 0}">
+          </div>
+        </div>
+
+        <div class="property-field col-span-2">
+          <label class="field-label">Ondulación Armónica</label>
+          <div class="dual-input">
+            <input type="range" id="lin-wave" min="0" max="25" step="0.5" value="${lin.waviness || 0}">
+            <input type="number" id="lin-wave-num" class="mini-num" min="0" max="25" step="0.5" value="${lin.waviness || 0}">
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.bindRangeNum(container, '#lin-copies', '#lin-copies-num', val => {
+      lin.copies = parseInt(val, 10);
+      this.notifyChange();
+    });
+    this.bindRangeNum(container, '#lin-angle', '#lin-angle-num', val => {
+      lin.angle = parseFloat(val);
+      this.notifyChange();
+    });
+    this.bindRangeNum(container, '#lin-wave', '#lin-wave-num', val => {
+      lin.waviness = parseFloat(val);
+      this.notifyChange();
+    });
+  }
+
+  /**
+   * Propiedades de Capa de Elemento / Acento
+   */
+  renderElementProperties(layer, state) {
+    const container = document.createElement('div');
+    container.className = 'inspector-sections-stack';
+
+    const block = document.createElement('div').attachTo(container, 'inspector-block');
+    block.innerHTML = `
+      <div class="block-title">Elemento de Foco</div>
+      
+      <div class="shape-picker-grid mb-3" id="accent-shape-picker"></div>
+
+      <div class="property-grid">
+        <div class="property-field">
+          <label class="field-label">Tamaño</label>
+          <div class="dual-input">
+            <input type="range" id="elem-size" min="20" max="600" value="${layer.size || 200}">
+            <input type="number" id="elem-size-num" class="mini-num" min="20" max="600" value="${layer.size || 200}">
+          </div>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Rotación (°)</label>
+          <div class="dual-input">
+            <input type="range" id="elem-rot" min="0" max="360" value="${layer.rotation || 0}">
+            <input type="number" id="elem-rot-num" class="mini-num" min="0" max="360" value="${layer.rotation || 0}">
+          </div>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Posición X (%)</label>
+          <div class="dual-input">
+            <input type="range" id="elem-pos-x" min="0" max="100" value="${layer.posX ?? 50}">
+            <input type="number" id="elem-pos-x-num" class="mini-num" min="0" max="100" value="${layer.posX ?? 50}">
+          </div>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Posición Y (%)</label>
+          <div class="dual-input">
+            <input type="range" id="elem-pos-y" min="0" max="100" value="${layer.posY ?? 50}">
+            <input type="number" id="elem-pos-y-num" class="mini-num" min="0" max="100" value="${layer.posY ?? 50}">
+          </div>
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Color</label>
+          <input type="color" id="elem-color" class="color-picker-input" value="${layer.color || '#ef4444'}">
+        </div>
+
+        <div class="property-field">
+          <label class="field-label">Modo Relleno</label>
+          <div class="segmented-control">
+            <button class="seg-btn ${layer.fillMode === 'fill' ? 'active' : ''}" data-fill="fill">Relleno</button>
+            <button class="seg-btn ${layer.fillMode !== 'fill' ? 'active' : ''}" data-fill="stroke">Trazo</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const shapeGrid = block.querySelector('#accent-shape-picker');
+    SHAPE_KEYS.forEach(key => {
+      const s = Shapes[key];
+      const btn = document.createElement('button');
+      btn.className = `shape-btn ${layer.shape === key ? 'active' : ''}`;
+      btn.innerHTML = s.iconSvg;
+      btn.title = s.name;
+      btn.addEventListener('click', () => {
+        layer.shape = key;
+        shapeGrid.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.renderLayersPanel(state);
+        this.notifyChange();
+      });
+      shapeGrid.appendChild(btn);
+    });
+
+    this.bindRangeNum(block, '#elem-size', '#elem-size-num', val => { layer.size = parseFloat(val); this.notifyChange(); });
+    this.bindRangeNum(block, '#elem-rot', '#elem-rot-num', val => { layer.rotation = parseFloat(val); this.notifyChange(); });
+    this.bindRangeNum(block, '#elem-pos-x', '#elem-pos-x-num', val => { layer.posX = parseFloat(val); this.notifyChange(); });
+    this.bindRangeNum(block, '#elem-pos-y', '#elem-pos-y-num', val => { layer.posY = parseFloat(val); this.notifyChange(); });
+
+    block.querySelector('#elem-color').addEventListener('input', e => {
+      layer.color = e.target.value;
+      this.notifyChange();
+    });
+
+    block.querySelectorAll('.segmented-control .seg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        block.querySelectorAll('.segmented-control .seg-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        layer.fillMode = btn.dataset.fill;
+        this.notifyChange();
+      });
+    });
+
+    this.inspectorContainer.appendChild(container);
+  }
+
+  createModifierAccordion(parent, title, modObj, renderContentFn) {
+    if (!modObj) return;
+    const item = document.createElement('div');
+    item.className = 'mod-accordion';
+
+    const head = document.createElement('div');
+    head.className = 'mod-accordion-header';
+    head.innerHTML = `
+      <div class="flex items-center gap-2">
+        <input type="checkbox" id="mod-toggle" class="mod-checkbox" ${modObj.enabled ? 'checked' : ''}>
+        <span class="mod-title">${title}</span>
+      </div>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="accordion-arrow"><polyline points="6 9 12 15 18 9"/></svg>
+    `;
+
+    const body = document.createElement('div');
+    body.className = `mod-accordion-body ${modObj.enabled ? 'expanded' : ''}`;
+
+    renderContentFn(body, modObj);
+
+    head.querySelector('#mod-toggle').addEventListener('change', (e) => {
+      modObj.enabled = e.target.checked;
+      body.classList.toggle('expanded', modObj.enabled);
+      this.notifyChange();
+    });
+
+    head.addEventListener('click', (e) => {
+      if (e.target.id === 'mod-toggle') return;
+      body.classList.toggle('expanded');
+    });
+
+    item.appendChild(head);
+    item.appendChild(body);
+    parent.appendChild(item);
+  }
+
+  bindRangeNum(parent, rangeSelector, numSelector, callback) {
+    const range = parent.querySelector(rangeSelector);
+    const num = parent.querySelector(numSelector);
+    if (!range || !num) return;
+
+    range.addEventListener('input', () => {
+      num.value = range.value;
+      callback(range.value);
+    });
+
+    num.addEventListener('input', () => {
+      range.value = num.value;
+      callback(num.value);
+    });
+  }
+
+  static showToast(message) {
+    let toast = document.getElementById('studio-toast');
     if (!toast) {
       toast = document.createElement('div');
-      toast.id = 'global-toast';
-      toast.className = 'toast';
+      toast.id = 'studio-toast';
+      toast.className = 'studio-toast';
       document.body.appendChild(toast);
     }
     toast.textContent = message;
     toast.classList.add('show');
-    setTimeout(() => {
+    clearTimeout(toast._timeout);
+    toast._timeout = setTimeout(() => {
       toast.classList.remove('show');
-    }, duration);
+    }, 2400);
   }
 }
+
+// Helper para adjuntar elemento y clase
+HTMLElement.prototype.attachTo = function(parent, className) {
+  this.className = className;
+  parent.appendChild(this);
+  return this;
+};

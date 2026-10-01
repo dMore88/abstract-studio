@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Abstract Studio - Diseño Generativo y Esculpido Vectorial</title>
+  <title>Abstract Studio - Creative Suite Generativa & Efectos Moiré</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📐</text></svg>">
 </head>
 <body>
 
-  <!-- Barra Superior -->
+  <!-- Barra Superior de Navegación -->
   <header class="topbar">
     <div class="brand">
       <div class="brand-icon">
@@ -21,40 +21,40 @@
           <path d="m9.17 14.83-4.24 4.24"/>
         </svg>
       </div>
-      <span>Abstract Studio</span>
-      <span class="brand-badge">Diseño Paramétrico</span>
+      <span class="brand-title">Abstract Studio</span>
+      <span class="brand-badge">Multicapa & Moiré</span>
     </div>
 
     <div class="topbar-actions">
-      <!-- Mutar / Jitter aleatorio -->
-      <button id="btn-mutate" class="btn" title="Variar armónicamente parámetros de la composición">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <!-- Mutar Parámetros de Capa -->
+      <button id="btn-mutate" class="btn" title="Variar armónicamente la capa activa para evolucionar el efecto Moiré">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>
         </svg>
         <span>Mutar</span>
       </button>
 
       <!-- Ver y Copiar Código -->
-      <button id="btn-view-code" class="btn" title="Ver código fuente exportable">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <button id="btn-view-code" class="btn" title="Ver configuración JSON exportable">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="16 18 22 12 16 6"/>
           <polyline points="8 6 2 12 8 18"/>
         </svg>
-        <span>Código</span>
+        <span>Config</span>
       </button>
 
       <!-- Copiar SVG al Portapapeles -->
-      <button id="btn-copy-svg" class="btn" title="Copiar SVG al portapapeles">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <button id="btn-copy-svg" class="btn" title="Copiar SVG vectorial al portapapeles">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
           <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
         </svg>
         <span>Copiar SVG</span>
       </button>
 
-      <!-- Descargar SVG -->
-      <button id="btn-download-svg" class="btn btn-primary" title="Descargar archivo .svg vectorial para Illustrator o plotters">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+      <!-- Descargar SVG Puro -->
+      <button id="btn-download-svg" class="btn btn-primary" title="Descargar archivo .svg vectorial puro para Illustrator o plotters">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
           <polyline points="7 10 12 15 17 10"/>
           <line x1="12" x2="12" y1="15" y2="3"/>
@@ -64,45 +64,68 @@
     </div>
   </header>
 
-  <!-- Contenedor Principal con Lienzo a la Izquierda y Panel a la Derecha -->
-  <div class="app-container">
+  <!-- Contenedor de la Aplicación en 3 Columnas Pro (Figma Style) -->
+  <div class="app-layout">
     
-    <!-- Área de Visualización / Lienzo Central -->
+    <!-- COLUMNA 1 (IZQUIERDA): PANEL DE CAPAS & MOIRÉ -->
+    <aside class="sidebar-left" id="layers-sidebar">
+      <!-- Inyectado dinámicamente por UIManager -->
+    </aside>
+
+    <!-- COLUMNA 2 (CENTRAL): LIENZO DE TRABAJO HiDPI -->
     <main class="viewport">
-      <div id="canvas-hint" class="canvas-hint">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 2 4 4-14 14H4v-4L18 2z"/></svg>
-        <span>Haz clic o arrastra sobre las líneas para esculpir a mano alzada</span>
+      
+      <!-- Toolbar Superior del Lienzo -->
+      <div class="canvas-top-bar">
+        <div class="flex items-center gap-2">
+          <div class="relative">
+            <select id="canvas-aspect-ratio" class="aspect-dropdown" title="Proporción del Lienzo">
+              <option value="1:1" selected>1:1 Cuadrado</option>
+              <option value="9:16">9:16 Story / Reel</option>
+              <option value="16:9">16:9 Cinema</option>
+              <option value="4:5">4:5 Instagram</option>
+              <option value="4:3">4:3 Editorial</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5">
+          <button id="studio-bounds-toggle" class="btn-icon-bar" title="Guías de Corte y Safe Bounds">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+          </button>
+          <button id="studio-invert-toggle" class="btn-icon-bar" title="Invertir Figura / Fondo">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20Z" fill="currentColor"/></svg>
+          </button>
+        </div>
       </div>
 
+      <!-- Lienzo Retina Acelerado -->
       <div class="canvas-wrapper">
-        <div id="svg-canvas-container"></div>
+        <canvas id="studio-canvas" class="studio-canvas" width="800" height="800"></canvas>
       </div>
 
       <!-- Barra de herramientas flotante de Zoom -->
       <div class="canvas-toolbar">
         <button id="btn-zoom-out" class="btn-icon-sm" title="Reducir zoom">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
         <button id="btn-zoom-reset" class="btn-icon-sm" title="Restablecer zoom">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"/>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
         <button id="btn-zoom-in" class="btn-icon-sm" title="Aumentar zoom">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
+      </div>
+
+      <!-- Barra Inferior de Estado & Resolución -->
+      <div class="canvas-status-bar">
+        <span id="studio-resolution-text">800 × 800 PX • RETINA HiDPI</span>
       </div>
     </main>
 
-    <!-- Barra Lateral / Inspector a la DERECHA (Estilo Illustrator / Figma) -->
-    <aside class="sidebar">
-      <div id="dynamic-controls" class="sidebar-content"></div>
+    <!-- COLUMNA 3 (DERECHA): INSPECTOR DE PROPIEDADES (FIGMA STYLE) -->
+    <aside class="sidebar-right" id="inspector-sidebar">
+      <!-- Inyectado dinámicamente por UIManager -->
     </aside>
 
   </div>
@@ -111,7 +134,7 @@
   <div id="modal-code" class="modal-overlay">
     <div class="modal-box">
       <div class="modal-header">
-        <h3 class="modal-title">Código Exportable de la Composición</h3>
+        <h3 class="modal-title">Configuración Exportable del Arte</h3>
         <button id="btn-close-modal" class="btn-icon-sm" title="Cerrar modal">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
@@ -128,7 +151,7 @@
             <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
             <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
           </svg>
-          <span>Copiar Código</span>
+          <span>Copiar Configuración</span>
         </button>
       </div>
     </div>
