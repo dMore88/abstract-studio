@@ -1,11 +1,20 @@
 /**
- * Paletas Cromáticas para Arte Abstracto
+ * Curated Color Palettes for Generative & Moiré Art
  */
 
 export const PALETTES = {
+  ink_paper: {
+    id: 'ink_paper',
+    name: 'Ink & Pure Paper',
+    bg: '#ffffff',
+    line: '#18191c',
+    accent1: '#43475b',
+    accent2: '#6366f1',
+    swatches: ['#ffffff', '#f4f4f5', '#717680', '#373a4d', '#18191c']
+  },
   petrol: {
     id: 'petrol',
-    name: 'Petróleo & Cian',
+    name: 'Petroleum & Cyan',
     bg: '#082c3d',
     line: '#a5f3fc',
     accent1: '#38bdf8',
@@ -14,7 +23,7 @@ export const PALETTES = {
   },
   aubergine: {
     id: 'aubergine',
-    name: 'Medianoche & Carmesí',
+    name: 'Midnight & Crimson',
     bg: '#140822',
     line: '#6366f1',
     accent1: '#e11d48',
@@ -23,7 +32,7 @@ export const PALETTES = {
   },
   terracotta: {
     id: 'terracotta',
-    name: 'Ciruela & Terracota',
+    name: 'Plum & Terracotta',
     bg: '#180a22',
     line: '#ea580c',
     accent1: '#fb923c',
@@ -32,7 +41,7 @@ export const PALETTES = {
   },
   chalk_black: {
     id: 'chalk_black',
-    name: 'Carbón & Tiza',
+    name: 'Charcoal & Chalk',
     bg: '#090d16',
     line: '#f1f5f9',
     accent1: '#ef4444',
@@ -41,7 +50,7 @@ export const PALETTES = {
   },
   emerald_abyss: {
     id: 'emerald_abyss',
-    name: 'Abismo Esmeralda',
+    name: 'Emerald Abyss',
     bg: '#04231b',
     line: '#6ee7b7',
     accent1: '#facc15',
@@ -50,7 +59,7 @@ export const PALETTES = {
   },
   bauhaus: {
     id: 'bauhaus',
-    name: 'Bauhaus Primario',
+    name: 'Bauhaus Primaries',
     bg: '#18181b',
     line: '#fafafa',
     accent1: '#dc2626',

@@ -8,11 +8,11 @@
 import { Shapes } from './shapes.js';
 
 export const ASPECT_RATIOS = {
-  '1:1': { label: '1:1 (Cuadrado)', width: 800, height: 800 },
-  '9:16': { label: '9:16 (Vertical / Stories)', width: 540, height: 960 },
-  '16:9': { label: '16:9 (Panorámico / Cinema)', width: 960, height: 540 },
-  '4:5': { label: '4:5 (Retrato / Instagram)', width: 640, height: 800 },
-  '4:3': { label: '4:3 (Editorial Clásico)', width: 800, height: 600 }
+  '1:1': { label: '1:1 Square', width: 800, height: 800 },
+  '9:16': { label: '9:16 Story / Reel', width: 540, height: 960 },
+  '16:9': { label: '16:9 Cinema', width: 960, height: 540 },
+  '4:5': { label: '4:5 Portrait', width: 640, height: 800 },
+  '4:3': { label: '4:3 Editorial', width: 800, height: 600 }
 };
 
 export class AbstractEngine {
@@ -65,10 +65,10 @@ export class AbstractEngine {
     ctx.scale(dpr, dpr);
 
     // 1. Fondo de Lienzo
-    let bgColor = state.canvas.bgColor || '#0e0e11';
+    let bgColor = state.canvas.bgColor || '#ffffff';
     let fgInverted = !!state.canvas.invertFigureGround;
     if (fgInverted) {
-      bgColor = state.canvas.invertedBgColor || '#f4f4f5';
+      bgColor = state.canvas.invertedBgColor || '#18191c';
     }
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, width, height);

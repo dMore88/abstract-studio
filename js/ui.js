@@ -1,7 +1,10 @@
 /**
- * Abstract Studio - Gestor de Interfaz de Usuario (Estilo Figma Creative Suite)
- * - Panel Izquierdo: Gestor de Capas Multicapa & Efectos Moiré
- * - Panel Derecho: Inspector de Propiedades Unificado (Geometría, Distribución, Moduladores y Materia)
+ * Abstract Studio - User Interface Manager
+ * Figma Studio Architecture:
+ * - Floating Layers Panel with solid black active layer state
+ * - Vertical Tool Rail with icon buttons
+ * - Flyout Popover Inspector for active editing panel
+ * - Full English translation
  */
 
 import { Shapes, SHAPE_KEYS } from './shapes.js';
@@ -10,1059 +13,687 @@ import { PALETTES } from './palettes.js';
 
 export class UIManager {
   constructor({
-    layersContainerId,
-    inspectorContainerId,
+    layersContainerId = 'layers-sidebar',
+    popoverContainerId = 'popover-inspector',
+    toolRailId = 'tool-rail',
     onStateChange,
-    onLayerSelect,
-    onUndoDeformation,
-    onClearDeformations
+    onLayerSelect
   }) {
     this.layersContainer = document.getElementById(layersContainerId);
-    this.inspectorContainer = document.getElementById(inspectorContainerId);
+    this.popoverContainer = document.getElementById(popoverContainerId);
+    this.toolRail = document.getElementById(toolRailId);
     this.onStateChange = onStateChange;
     this.onLayerSelect = onLayerSelect;
-    this.onUndoDeformation = onUndoDeformation;
-    this.onClearDeformations = onClearDeformations;
+
+    // Active flyout panel: 'shape' | 'pattern' | 'style' | null
+    // Defaults to 'shape' open as in the design screenshot
+    this.activePanel = 'shape';
+    this.currentState = null;
+
+    this.initEventListeners();
   }
 
   notifyChange() {
     if (this.onStateChange) this.onStateChange();
   }
 
+  initEventListeners() {
+    // 1. Tool Rail button click handling
+    if (this.toolRail) {
+      this.toolRail.addEventListener('click', (e) => {
+        const btn = e.target.closest('.rail-btn');
+        if (!btn || btn.classList.contains('hidden-rail-btn')) return;
+
+        const panelKey = btn.dataset.panel;
+        if (this.activePanel === panelKey) {
+          // Toggle off if clicking the active one
+          this.closePopover();
+        } else {
+          // Open or switch to the new panel
+          this.openPanel(panelKey);
+        }
+      });
+    }
+
+    // 2. Click outside closes the popover
+    document.addEventListener('pointerdown', (e) => {
+      if (!this.popoverContainer || !this.activePanel) return;
+
+      // If clicked inside popover or inside tool rail, do not close
+      if (this.popoverContainer.contains(e.target) || (this.toolRail && this.toolRail.contains(e.target))) {
+        return;
+      }
+
+      this.closePopover();
+    });
+
+    // 3. Escape key closes popover
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.activePanel) {
+        this.closePopover();
+      }
+    });
+  }
+
+  openPanel(panelKey) {
+    this.activePanel = panelKey;
+    if (this.currentState) {
+      this.render(this.currentState);
+    }
+  }
+
+  closePopover() {
+    this.activePanel = null;
+    if (this.popoverContainer) {
+      this.popoverContainer.classList.remove('open');
+      this.popoverContainer.innerHTML = '';
+    }
+    if (this.toolRail) {
+      this.toolRail.querySelectorAll('.rail-btn').forEach(btn => btn.classList.remove('active'));
+    }
+  }
+
   render(state) {
+    this.currentState = state;
     this.renderLayersPanel(state);
-    this.renderInspector(state);
+    this.updateToolRail();
+    this.renderPopover(state);
+  }
+
+  updateToolRail() {
+    if (!this.toolRail) return;
+    this.toolRail.querySelectorAll('.rail-btn').forEach(btn => {
+      const panelKey = btn.dataset.panel;
+      btn.classList.toggle('active', this.activePanel === panelKey);
+    });
   }
 
   // =========================================================================
-  // 1. PANEL DE CAPAS (COLUMNA IZQUIERDA - FIGMA STYLE)
+  // 1. LAYERS PANEL (Floating Left)
   // =========================================================================
 
   renderLayersPanel(state) {
     if (!this.layersContainer) return;
     this.layersContainer.innerHTML = '';
 
-    // Encabezado del panel de capas
+    // Header: LAYERS count + Add pattern +
     const header = document.createElement('div');
-    header.className = 'panel-header';
+    header.className = 'layers-header';
     header.innerHTML = `
-      <div class="panel-header-title">
-        <span class="font-bold">Capas</span>
-        <span class="layer-count-badge">${state.layers.length}</span>
+      <div class="layers-header-title">
+        <span>LAYERS</span>
+        <span class="layers-badge">${state.layers.length}</span>
       </div>
-      <div class="layer-actions-group">
-        <button id="btn-add-pattern" class="btn-tool" title="Añadir Capa de Patrón Generativo">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-          <span>Patrón</span>
-        </button>
-        <button id="btn-add-accent" class="btn-tool" title="Añadir Capa de Elemento / Acento">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
-          <span>Acento</span>
-        </button>
-      </div>
+      <button id="btn-add-pattern-layer" class="btn-add-layer" title="Add Generative Pattern Layer">
+        <span>Add pattern</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
     `;
     this.layersContainer.appendChild(header);
 
-    // Botón de acceso rápido a Efecto Moiré
-    const moireBar = document.createElement('div');
-    moireBar.className = 'quick-action-bar';
-    moireBar.innerHTML = `
-      <button id="btn-quick-moire" class="btn-moire-quick" title="Crear automáticamente un par de patrones superpuestos para Moiré">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/></svg>
-        <span>+ Par Moiré Interactivo</span>
-      </button>
-    `;
-    this.layersContainer.appendChild(moireBar);
-
-    // Lista de Capas (Ordenadas de Frente a Fondo)
+    // List of layers (rendered top to bottom)
     const list = document.createElement('div');
     list.className = 'layers-list';
 
-    // Renderizar en orden inverso para que la capa superior aparezca primero visualmente
     for (let idx = state.layers.length - 1; idx >= 0; idx--) {
       const layer = state.layers[idx];
       const isActive = layer.id === state.activeLayerId;
       const shapeDef = Shapes[layer.shape] || Shapes.circle;
 
-      const item = document.createElement('div');
-      item.className = `layer-item ${isActive ? 'active' : ''} ${!layer.visible ? 'hidden-layer' : ''}`;
-      item.innerHTML = `
-        <div class="layer-item-main">
-          <button class="layer-visibility-btn" title="${layer.visible ? 'Ocultar Capa' : 'Mostrar Capa'}">
-            ${layer.visible
-              ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`
-              : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9.88 9.88 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>`
-            }
-          </button>
-          
-          <div class="layer-thumbnail">
-            ${shapeDef.iconSvg}
-          </div>
+      const card = document.createElement('div');
+      card.className = `layer-card ${isActive ? 'active' : ''}`;
+      
+      const subInfo = `${layer.distribution || 'polar'} • ${layer.blendMode === 'difference' || layer.blendMode === 'multiply' ? 'Moiré' : 'Pattern'}`;
 
-          <div class="layer-info">
-            <span class="layer-name" title="${layer.name}">${layer.name}</span>
-            <span class="layer-badge">${layer.type === 'pattern' ? (layer.distribution || 'patrón') : 'acento'} • ${layer.blendMode === 'difference' ? 'Moiré (Diff)' : layer.blendMode}</span>
+      card.innerHTML = `
+        <div class="layer-card-left">
+          <div class="layer-thumb">
+            ${shapeDef.iconSvg || `<svg viewBox="-20 -20 40 40"><circle cx="0" cy="0" r="12" fill="currentColor"/></svg>`}
+          </div>
+          <div class="layer-meta">
+            <span class="layer-title">${layer.name || `Layer ${idx + 1}`}</span>
+            <span class="layer-sub">${subInfo}</span>
           </div>
         </div>
 
-        <div class="layer-item-controls">
-          <button class="layer-order-btn btn-layer-up" title="Mover Arriba" ${idx === state.layers.length - 1 ? 'disabled' : ''}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+        <div class="layer-actions">
+          <button class="layer-action-btn btn-toggle-vis" title="${layer.visible ? 'Hide layer' : 'Show layer'}">
+            ${layer.visible
+              ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`
+              : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9.88 9.88 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>`
+            }
           </button>
-          <button class="layer-order-btn btn-layer-down" title="Mover Abajo" ${idx === 0 ? 'disabled' : ''}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          <button class="layer-action-btn btn-delete-layer" title="Delete layer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
           </button>
-          <button class="layer-delete-btn" title="Eliminar Capa" ${state.layers.length <= 1 ? 'disabled' : ''}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+          <span class="layer-action-btn layer-drag-handle" title="Reorder layer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
+          </span>
         </div>
       `;
 
-      // Clic para seleccionar
-      item.querySelector('.layer-item-main').addEventListener('click', () => {
+      // Select Layer
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.layer-action-btn')) return;
         state.activeLayerId = layer.id;
+        if (this.onLayerSelect) this.onLayerSelect(layer.id);
         this.render(state);
-        this.notifyChange();
       });
 
-      // Toggle visibilidad
-      item.querySelector('.layer-visibility-btn').addEventListener('click', (e) => {
+      // Toggle Visibility
+      const btnVis = card.querySelector('.btn-toggle-vis');
+      btnVis.addEventListener('click', (e) => {
         e.stopPropagation();
         layer.visible = !layer.visible;
         this.render(state);
         this.notifyChange();
       });
 
-      // Mover arriba
-      const btnUp = item.querySelector('.btn-layer-up');
-      if (btnUp && idx < state.layers.length - 1) {
-        btnUp.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const temp = state.layers[idx];
-          state.layers[idx] = state.layers[idx + 1];
-          state.layers[idx + 1] = temp;
-          this.render(state);
-          this.notifyChange();
-        });
-      }
+      // Delete Layer
+      const btnDel = card.querySelector('.btn-delete-layer');
+      btnDel.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (state.layers.length <= 1) {
+          UIManager.showToast('⚠️ At least one layer is required');
+          return;
+        }
+        state.layers.splice(idx, 1);
+        if (state.activeLayerId === layer.id) {
+          state.activeLayerId = state.layers[state.layers.length - 1].id;
+        }
+        this.render(state);
+        this.notifyChange();
+        UIManager.showToast('🗑️ Layer removed');
+      });
 
-      // Mover abajo
-      const btnDown = item.querySelector('.btn-layer-down');
-      if (btnDown && idx > 0) {
-        btnDown.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const temp = state.layers[idx];
-          state.layers[idx] = state.layers[idx - 1];
-          state.layers[idx - 1] = temp;
-          this.render(state);
-          this.notifyChange();
-        });
-      }
-
-      // Eliminar capa
-      const btnDel = item.querySelector('.layer-delete-btn');
-      if (btnDel && state.layers.length > 1) {
-        btnDel.addEventListener('click', (e) => {
-          e.stopPropagation();
-          state.layers.splice(idx, 1);
-          if (state.activeLayerId === layer.id) {
-            state.activeLayerId = state.layers[state.layers.length - 1].id;
-          }
-          this.render(state);
-          this.notifyChange();
-          UIManager.showToast('🗑️ Capa eliminada');
-        });
-      }
-
-      list.appendChild(item);
+      list.appendChild(card);
     }
 
     this.layersContainer.appendChild(list);
 
-    // Sección de Presets al pie de las capas
-    const presetsSection = document.createElement('div');
-    presetsSection.className = 'panel-presets-footer';
-    presetsSection.innerHTML = `
-      <div class="panel-subtitle">Presets de Composición</div>
-      <div class="presets-quick-grid" id="presets-quick-container"></div>
-    `;
-    const pContainer = presetsSection.querySelector('#presets-quick-container');
-    PRESETS.forEach(preset => {
-      const pBtn = document.createElement('button');
-      pBtn.className = 'preset-chip-btn';
-      pBtn.textContent = preset.name;
-      pBtn.title = preset.description;
-      pBtn.addEventListener('click', () => {
-        // Cargar estado del preset clonado
-        state.canvas = JSON.parse(JSON.stringify(preset.state.canvas));
-        state.layers = JSON.parse(JSON.stringify(preset.state.layers));
-        state.activeLayerId = state.layers[0]?.id;
-        this.render(state);
-        this.notifyChange();
-        UIManager.showToast(`✨ Preset cargado: ${preset.name}`);
-      });
-      pContainer.appendChild(pBtn);
-    });
-    this.layersContainer.appendChild(presetsSection);
-
-    // Eventos de botones de creación
-    header.querySelector('#btn-add-pattern').addEventListener('click', () => {
+    // Add Pattern Layer event
+    header.querySelector('#btn-add-pattern-layer').addEventListener('click', () => {
       const newId = `layer-${Date.now().toString().slice(-4)}`;
       const newLayer = {
         id: newId,
-        name: `Patrón ${state.layers.length + 1}`,
+        name: `Layer ${state.layers.length + 1}`,
         type: 'pattern',
         visible: true,
         opacity: 100,
-        blendMode: state.layers.length > 0 ? 'difference' : 'source-over',
-        shape: 'circle',
-        width: 60,
-        height: 60,
-        rotation: 0,
+        blendMode: state.layers.length > 0 ? 'multiply' : 'source-over',
+        shape: 'line',
+        width: 50,
+        height: 50,
+        rotation: state.layers.length * 4.5,
         offsetX: 0,
         offsetY: 0,
-        color: '#f4f4f5',
-        strokeWidth: 1.4,
+        color: '#363a4d',
+        strokeWidth: 1.2,
         fillMode: 'stroke',
         distribution: 'polar',
-        polar: { scheme: 'centrifugal', rays: 36, rings: 5, radius: 0.42, spiralTwist: 0 },
-        cartesian: { gridType: 'basic', cols: 6, rows: 6 },
-        linear: { copies: 36, angle: 0, waviness: 0 },
-        gradation: { enabled: false },
-        anomaly: { enabled: false },
-        similarity: { enabled: false },
-        concentration: { enabled: false },
-        space: { enabled: false },
+        polar: { scheme: 'centrifugal', rays: 48, rings: 6, radius: 0.44, spiralTwist: 0 },
         jitter: 0
       };
       state.layers.push(newLayer);
       state.activeLayerId = newId;
       this.render(state);
       this.notifyChange();
-      UIManager.showToast('➕ Nueva capa de patrón creada');
-    });
-
-    header.querySelector('#btn-add-accent').addEventListener('click', () => {
-      const newId = `layer-${Date.now().toString().slice(-4)}`;
-      const newLayer = {
-        id: newId,
-        name: `Acento ${state.layers.length + 1}`,
-        type: 'element',
-        visible: true,
-        opacity: 90,
-        blendMode: 'source-over',
-        shape: 'circle',
-        size: 200,
-        posX: 50,
-        posY: 50,
-        rotation: 0,
-        color: '#ef4444',
-        strokeWidth: 2,
-        fillMode: 'fill'
-      };
-      state.layers.push(newLayer);
-      state.activeLayerId = newId;
-      this.render(state);
-      this.notifyChange();
-      UIManager.showToast('➕ Capa de acento agregada');
-    });
-
-    moireBar.querySelector('#btn-quick-moire').addEventListener('click', () => {
-      // Reemplazar o añadir configuración Moiré dual
-      const idA = `layer-${Date.now()}-a`;
-      const idB = `layer-${Date.now()}-b`;
-      state.layers = [
-        {
-          id: idA,
-          name: 'Moiré Radial A',
-          type: 'pattern',
-          visible: true,
-          opacity: 100,
-          blendMode: 'source-over',
-          shape: 'line',
-          width: 50,
-          height: 50,
-          rotation: 0,
-          offsetX: 0,
-          offsetY: 0,
-          color: '#f4f4f5',
-          strokeWidth: 1.2,
-          fillMode: 'stroke',
-          distribution: 'polar',
-          polar: { scheme: 'centrifugal', rays: 48, rings: 5, radius: 0.44 },
-          jitter: 0
-        },
-        {
-          id: idB,
-          name: 'Moiré Radial B (Rotado)',
-          type: 'pattern',
-          visible: true,
-          opacity: 100,
-          blendMode: 'difference',
-          shape: 'line',
-          width: 50,
-          height: 50,
-          rotation: 5.0,
-          offsetX: 0,
-          offsetY: 0,
-          color: '#f4f4f5',
-          strokeWidth: 1.2,
-          fillMode: 'stroke',
-          distribution: 'polar',
-          polar: { scheme: 'centrifugal', rays: 48, rings: 5, radius: 0.44 },
-          jitter: 0
-        }
-      ];
-      state.activeLayerId = idB;
-      this.render(state);
-      this.notifyChange();
-      UIManager.showToast('✨ Par Moiré interactivo creado');
+      UIManager.showToast('➕ New pattern layer added');
     });
   }
 
   // =========================================================================
-  // 2. INSPECTOR DE PROPIEDADES (COLUMNA DERECHA - FIGMA STYLE)
+  // 2. FLYOUT POPOVER INSPECTOR
   // =========================================================================
 
-  renderInspector(state) {
-    if (!this.inspectorContainer) return;
-    this.inspectorContainer.innerHTML = '';
+  renderPopover(state) {
+    if (!this.popoverContainer) return;
 
-    const activeLayer = state.layers.find(l => l.id === state.activeLayerId) || state.layers[0];
-    if (!activeLayer) {
-      this.inspectorContainer.innerHTML = '<div class="empty-inspector">Selecciona una capa para editar</div>';
+    if (!this.activePanel) {
+      this.popoverContainer.classList.remove('open');
+      this.popoverContainer.innerHTML = '';
       return;
     }
 
-    // Cabecera de la capa seleccionada
-    const layerHeader = document.createElement('div');
-    layerHeader.className = 'inspector-header';
-    layerHeader.innerHTML = `
-      <div class="inspector-header-row">
-        <input type="text" id="active-layer-name" class="layer-title-input" value="${activeLayer.name}" title="Editar nombre de capa">
-        <span class="inspector-badge">${activeLayer.type === 'pattern' ? 'Generativo' : 'Elemento'}</span>
-      </div>
-      
-      <div class="property-grid">
-        <div class="property-field">
-          <label class="field-label">Opacidad</label>
-          <div class="dual-input">
-            <input type="range" id="input-layer-opacity" min="0" max="100" value="${activeLayer.opacity ?? 100}">
-            <input type="number" id="num-layer-opacity" class="mini-num" min="0" max="100" value="${activeLayer.opacity ?? 100}">
-          </div>
-        </div>
+    this.popoverContainer.classList.add('open');
+    this.popoverContainer.innerHTML = '';
 
-        <div class="property-field">
-          <label class="field-label">Modo de Fusión (Moiré)</label>
-          <select id="select-layer-blend" class="field-select">
-            <option value="source-over" ${activeLayer.blendMode === 'source-over' ? 'selected' : ''}>Normal</option>
-            <option value="difference" ${activeLayer.blendMode === 'difference' ? 'selected' : ''}>Diferencia (Moiré)</option>
-            <option value="screen" ${activeLayer.blendMode === 'screen' ? 'selected' : ''}>Trama (Screen)</option>
-            <option value="multiply" ${activeLayer.blendMode === 'multiply' ? 'selected' : ''}>Multiplicar</option>
-            <option value="overlay" ${activeLayer.blendMode === 'overlay' ? 'selected' : ''}>Superponer</option>
-          </select>
-        </div>
-      </div>
-    `;
+    const activeLayer = state.layers.find(l => l.id === state.activeLayerId) || state.layers[0];
+    if (!activeLayer) {
+      this.popoverContainer.innerHTML = '<div class="popover-section-label">Select a layer</div>';
+      return;
+    }
 
-    // Sincronizar nombre
-    const nameInput = layerHeader.querySelector('#active-layer-name');
-    nameInput.addEventListener('change', () => {
-      activeLayer.name = nameInput.value.trim() || 'Capa';
-      this.renderLayersPanel(state);
-      this.notifyChange();
-    });
-
-    // Opacidad
-    this.bindRangeNum(
-      layerHeader,
-      '#input-layer-opacity',
-      '#num-layer-opacity',
-      val => {
-        activeLayer.opacity = parseInt(val, 10);
-        this.notifyChange();
-      }
-    );
-
-    // Blend mode
-    layerHeader.querySelector('#select-layer-blend').addEventListener('change', (e) => {
-      activeLayer.blendMode = e.target.value;
-      this.renderLayersPanel(state);
-      this.notifyChange();
-    });
-
-    this.inspectorContainer.appendChild(layerHeader);
-
-    // Renderizar propiedades según el tipo de capa
-    if (activeLayer.type === 'pattern') {
-      this.renderPatternProperties(activeLayer, state);
-    } else {
-      this.renderElementProperties(activeLayer, state);
+    if (this.activePanel === 'shape') {
+      this.renderShapePopover(state, activeLayer);
+    } else if (this.activePanel === 'pattern') {
+      this.renderPatternPopover(state, activeLayer);
+    } else if (this.activePanel === 'style') {
+      this.renderStylePopover(state, activeLayer);
     }
   }
 
-  /**
-   * Propiedades de Capa de Patrón Generativo
-   */
-  renderPatternProperties(layer, state) {
-    const container = document.createElement('div');
-    container.className = 'inspector-sections-stack';
+  // --- POPOVER 1: SHAPE ---
+  renderShapePopover(state, layer) {
+    const container = this.popoverContainer;
 
-    // 1. FORMA Y GEOMETRÍA PRIMITIVA
-    const shapeBlock = document.createElement('div').attachTo(container, 'inspector-block');
-    shapeBlock.innerHTML = `
-      <div class="block-title">Módulo & Geometría</div>
-      <div class="shape-picker-grid" id="shape-selector-grid"></div>
+    // Header label
+    const title = document.createElement('div');
+    title.className = 'popover-section-label';
+    title.textContent = 'Shape';
+    container.appendChild(title);
 
-      <div class="property-grid pt-2">
-        <div class="property-field">
-          <label class="field-label">Ancho</label>
-          <div class="dual-input">
-            <input type="range" id="input-layer-width" min="10" max="300" value="${layer.width || 60}">
-            <input type="number" id="num-layer-width" class="mini-num" min="10" max="300" value="${layer.width || 60}">
-          </div>
-        </div>
+    // 1. Shapes Grid (7 columns)
+    const grid = document.createElement('div');
+    grid.className = 'shape-grid';
 
-        <div class="property-field">
-          <label class="field-label">Alto</label>
-          <div class="dual-input">
-            <input type="range" id="input-layer-height" min="10" max="300" value="${layer.height || 60}">
-            <input type="number" id="num-layer-height" class="mini-num" min="10" max="300" value="${layer.height || 60}">
-          </div>
-        </div>
+    // List of keys to display matching the screenshot
+    const displayShapes = [
+      'circle', 'rect', 'triangle_eq', 'wave', 'horseshoe', 'hexagon', 'line',
+      'rhombus', 'grid_cross', 'c_ring', 'capsule', 'cross', 'glyph_1', 'glyph_5',
+      'teardrop', 'star4'
+    ];
 
-        <div class="property-field">
-          <label class="field-label">Rotación (°)</label>
-          <div class="dual-input">
-            <input type="range" id="input-layer-rotation" min="0" max="360" step="0.5" value="${layer.rotation || 0}">
-            <input type="number" id="num-layer-rotation" class="mini-num" min="0" max="360" step="0.5" value="${layer.rotation || 0}">
-          </div>
-        </div>
+    displayShapes.forEach(shapeKey => {
+      const shapeDef = Shapes[shapeKey];
+      if (!shapeDef) return;
 
-        <div class="property-field">
-          <label class="field-label">Grosor Trazo</label>
-          <div class="dual-input">
-            <input type="range" id="input-layer-stroke" min="0.5" max="10" step="0.2" value="${layer.strokeWidth || 1.4}">
-            <input type="number" id="num-layer-stroke" class="mini-num" min="0.5" max="10" step="0.2" value="${layer.strokeWidth || 1.4}">
-          </div>
+      const isCurrent = (layer.shape || 'circle') === shapeKey;
+      const btn = document.createElement('button');
+      btn.className = `shape-pill-btn ${isCurrent ? 'active' : ''}`;
+      btn.title = shapeDef.name;
+
+      // Use Phosphor icon if available, otherwise inline vector
+      if (shapeDef.phFillClass) {
+        btn.innerHTML = `<i class="${shapeDef.phFillClass}"></i>`;
+      } else {
+        btn.innerHTML = shapeDef.iconSvg;
+      }
+
+      btn.addEventListener('click', () => {
+        layer.shape = shapeKey;
+        this.render(state);
+        this.notifyChange();
+      });
+
+      grid.appendChild(btn);
+    });
+
+    container.appendChild(grid);
+
+    // 2. 2x2 Slider Grid (Width, Height, Rotation, Stroke Width)
+    const controlsGrid = document.createElement('div');
+    controlsGrid.className = 'control-grid-2x2';
+    controlsGrid.innerHTML = `
+      <!-- Width -->
+      <div class="control-field">
+        <label class="control-label">Width</label>
+        <div class="control-slider-row">
+          <input type="range" class="range-slider-input" id="inp-shape-width" min="5" max="250" value="${layer.width || 50}">
+          <input type="text" class="number-pill-box" id="num-shape-width" value="${layer.width || 50}">
         </div>
       </div>
 
-      <div class="property-grid pt-1">
-        <div class="property-field">
-          <label class="field-label">Relleno / Trazo</label>
-          <div class="segmented-control">
-            <button class="seg-btn ${layer.fillMode !== 'fill' ? 'active' : ''}" data-fill="stroke">Trazo</button>
-            <button class="seg-btn ${layer.fillMode === 'fill' ? 'active' : ''}" data-fill="fill">Relleno</button>
-          </div>
+      <!-- Height -->
+      <div class="control-field">
+        <label class="control-label">Height</label>
+        <div class="control-slider-row">
+          <input type="range" class="range-slider-input" id="inp-shape-height" min="5" max="250" value="${layer.height || 50}">
+          <input type="text" class="number-pill-box" id="num-shape-height" value="${layer.height || 50}">
         </div>
+      </div>
 
-        <div class="property-field">
-          <label class="field-label">Color de Forma</label>
-          <input type="color" id="input-layer-color" class="color-picker-input" value="${layer.color || '#f4f4f5'}">
+      <!-- Rotation -->
+      <div class="control-field">
+        <label class="control-label">Rotation (°)</label>
+        <div class="control-slider-row">
+          <input type="range" class="range-slider-input" id="inp-shape-rot" min="0" max="360" step="0.5" value="${layer.rotation || 0}">
+          <input type="text" class="number-pill-box" id="num-shape-rot" value="${layer.rotation || 0}">
+        </div>
+      </div>
+
+      <!-- Stroke Width -->
+      <div class="control-field">
+        <label class="control-label">Stroke Width</label>
+        <div class="control-slider-row">
+          <input type="range" class="range-slider-input" id="inp-shape-stroke" min="0.2" max="10" step="0.1" value="${layer.strokeWidth || 1.2}">
+          <input type="text" class="number-pill-box" id="num-shape-stroke" value="${layer.strokeWidth || 1.2}">
         </div>
       </div>
     `;
 
-    // Inyectar iconos de las 20 formas en el grid
-    const shapeGrid = shapeBlock.querySelector('#shape-selector-grid');
-    SHAPE_KEYS.forEach(key => {
-      const s = Shapes[key];
-      const btn = document.createElement('button');
-      btn.className = `shape-btn ${layer.shape === key ? 'active' : ''}`;
-      btn.innerHTML = s.iconSvg;
-      btn.title = s.name;
-      btn.addEventListener('click', () => {
-        layer.shape = key;
-        shapeGrid.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.renderLayersPanel(state);
-        this.notifyChange();
-      });
-      shapeGrid.appendChild(btn);
-    });
-
-    // Binds de tamaño y rotación
-    this.bindRangeNum(shapeBlock, '#input-layer-width', '#num-layer-width', val => {
+    // Bind slider & numeric input sync
+    this.bindRangeAndNumber(controlsGrid, 'inp-shape-width', 'num-shape-width', (val) => {
       layer.width = parseFloat(val);
       this.notifyChange();
     });
-    this.bindRangeNum(shapeBlock, '#input-layer-height', '#num-layer-height', val => {
+
+    this.bindRangeAndNumber(controlsGrid, 'inp-shape-height', 'num-shape-height', (val) => {
       layer.height = parseFloat(val);
       this.notifyChange();
     });
-    this.bindRangeNum(shapeBlock, '#input-layer-rotation', '#num-layer-rotation', val => {
+
+    this.bindRangeAndNumber(controlsGrid, 'inp-shape-rot', 'num-shape-rot', (val) => {
       layer.rotation = parseFloat(val);
       this.notifyChange();
     });
-    this.bindRangeNum(shapeBlock, '#input-layer-stroke', '#num-layer-stroke', val => {
+
+    this.bindRangeAndNumber(controlsGrid, 'inp-shape-stroke', 'num-shape-stroke', (val) => {
       layer.strokeWidth = parseFloat(val);
       this.notifyChange();
     });
 
-    // Fill mode
-    shapeBlock.querySelectorAll('.seg-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        shapeBlock.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        layer.fillMode = btn.dataset.fill;
-        this.notifyChange();
-      });
-    });
+    container.appendChild(controlsGrid);
 
-    // Color
-    shapeBlock.querySelector('#input-layer-color').addEventListener('input', (e) => {
-      layer.color = e.target.value;
+    // 3. Bottom Row: Fill / Stroke toggle & Shape Color
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'control-row-bottom';
+
+    const isStroke = (layer.fillMode || 'stroke') === 'stroke';
+    const hexColor = (layer.color || '#363a4d').toUpperCase();
+
+    bottomRow.innerHTML = `
+      <!-- Fill / Stroke -->
+      <div class="control-field">
+        <label class="control-label">Fill / Stroke</label>
+        <div class="segmented-pill-container">
+          <button class="segmented-pill-btn ${isStroke ? 'active' : ''}" id="btn-fillmode-stroke">Stroke</button>
+          <button class="segmented-pill-btn ${!isStroke ? 'active' : ''}" id="btn-fillmode-fill">Fill</button>
+        </div>
+      </div>
+
+      <!-- Shape Color -->
+      <div class="control-field">
+        <label class="control-label">Shape Color</label>
+        <div class="color-picker-box">
+          <div class="color-swatch-btn" id="shape-color-swatch" style="background-color: ${layer.color || '#363a4d'};">
+            <input type="color" class="color-swatch-native" id="native-color-picker" value="${layer.color || '#363a4d'}">
+          </div>
+          <span class="color-hex-text" id="color-hex-label">${hexColor}</span>
+        </div>
+      </div>
+    `;
+
+    // Fill / Stroke events
+    bottomRow.querySelector('#btn-fillmode-stroke').addEventListener('click', () => {
+      layer.fillMode = 'stroke';
+      this.render(state);
       this.notifyChange();
     });
 
-    // 2. DISTRIBUCIÓN ESPACIAL
-    const distBlock = document.createElement('div').attachTo(container, 'inspector-block');
-    const curDist = layer.distribution || 'cartesian';
-    distBlock.innerHTML = `
-      <div class="block-title">Distribución Espacial</div>
-      <div class="segmented-control mb-3">
-        <button class="seg-btn ${curDist === 'cartesian' ? 'active' : ''}" data-dist="cartesian">Cartesiana</button>
-        <button class="seg-btn ${curDist === 'polar' ? 'active' : ''}" data-dist="polar">Polar / Radiación</button>
-        <button class="seg-btn ${curDist === 'linear' ? 'active' : ''}" data-dist="linear">Lineal</button>
-      </div>
+    bottomRow.querySelector('#btn-fillmode-fill').addEventListener('click', () => {
+      layer.fillMode = 'fill';
+      this.render(state);
+      this.notifyChange();
+    });
 
-      <div id="distribution-params-container"></div>
+    // Native Color Picker
+    const colorInput = bottomRow.querySelector('#native-color-picker');
+    const colorSwatch = bottomRow.querySelector('#shape-color-swatch');
+    const colorHexLabel = bottomRow.querySelector('#color-hex-label');
+
+    colorInput.addEventListener('input', (e) => {
+      layer.color = e.target.value;
+      colorSwatch.style.backgroundColor = e.target.value;
+      colorHexLabel.textContent = e.target.value.toUpperCase();
+      this.notifyChange();
+    });
+
+    container.appendChild(bottomRow);
+  }
+
+  // --- POPOVER 2: PATTERN & DISTRIBUTION ---
+  renderPatternPopover(state, layer) {
+    const container = this.popoverContainer;
+
+    const title = document.createElement('div');
+    title.className = 'popover-section-label';
+    title.textContent = 'Distribution & Moiré';
+    container.appendChild(title);
+
+    const distMode = layer.distribution || 'polar';
+
+    // Distribution Mode Toggle
+    const modePill = document.createElement('div');
+    modePill.className = 'distribution-mode-pill';
+    modePill.innerHTML = `
+      <button class="dist-pill-btn ${distMode === 'polar' ? 'active' : ''}" data-dist="polar">Radial (Polar)</button>
+      <button class="dist-pill-btn ${distMode === 'linear' ? 'active' : ''}" data-dist="linear">Linear</button>
+      <button class="dist-pill-btn ${distMode === 'cartesian' ? 'active' : ''}" data-dist="cartesian">Grid</button>
     `;
 
-    distBlock.querySelectorAll('.segmented-control .seg-btn').forEach(btn => {
+    modePill.querySelectorAll('.dist-pill-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         layer.distribution = btn.dataset.dist;
-        this.renderLayersPanel(state);
-        this.renderInspector(state);
+        this.render(state);
         this.notifyChange();
       });
     });
+    container.appendChild(modePill);
 
-    const distParams = distBlock.querySelector('#distribution-params-container');
-    if (curDist === 'polar') {
-      this.renderPolarControls(distParams, layer);
-    } else if (curDist === 'linear') {
-      this.renderLinearControls(distParams, layer);
+    const fieldsContainer = document.createElement('div');
+    fieldsContainer.className = 'control-grid-2x2';
+
+    if (distMode === 'polar') {
+      const p = layer.polar || (layer.polar = { scheme: 'centrifugal', rays: 48, rings: 6, radius: 0.44 });
+      fieldsContainer.innerHTML = `
+        <div class="control-field">
+          <label class="control-label">Rays / Copies</label>
+          <div class="control-slider-row">
+            <input type="range" class="range-slider-input" id="inp-rays" min="6" max="120" value="${p.rays || 48}">
+            <input type="text" class="number-pill-box" id="num-rays" value="${p.rays || 48}">
+          </div>
+        </div>
+
+        <div class="control-field">
+          <label class="control-label">Radius / Scale</label>
+          <div class="control-slider-row">
+            <input type="range" class="range-slider-input" id="inp-radius" min="0.1" max="1.0" step="0.02" value="${p.radius || 0.44}">
+            <input type="text" class="number-pill-box" id="num-radius" value="${p.radius || 0.44}">
+          </div>
+        </div>
+
+        <div class="control-field">
+          <label class="control-label">Rings</label>
+          <div class="control-slider-row">
+            <input type="range" class="range-slider-input" id="inp-rings" min="1" max="24" value="${p.rings || 6}">
+            <input type="text" class="number-pill-box" id="num-rings" value="${p.rings || 6}">
+          </div>
+        </div>
+
+        <div class="control-field">
+          <label class="control-label">Spiral Twist</label>
+          <div class="control-slider-row">
+            <input type="range" class="range-slider-input" id="inp-twist" min="-180" max="180" value="${p.spiralTwist || 0}">
+            <input type="text" class="number-pill-box" id="num-twist" value="${p.spiralTwist || 0}">
+          </div>
+        </div>
+      `;
+
+      this.bindRangeAndNumber(fieldsContainer, 'inp-rays', 'num-rays', (val) => { p.rays = parseInt(val, 10); this.notifyChange(); });
+      this.bindRangeAndNumber(fieldsContainer, 'inp-radius', 'num-radius', (val) => { p.radius = parseFloat(val); this.notifyChange(); });
+      this.bindRangeAndNumber(fieldsContainer, 'inp-rings', 'num-rings', (val) => { p.rings = parseInt(val, 10); this.notifyChange(); });
+      this.bindRangeAndNumber(fieldsContainer, 'inp-twist', 'num-twist', (val) => { p.spiralTwist = parseFloat(val); this.notifyChange(); });
+
+    } else if (distMode === 'linear') {
+      const l = layer.linear || (layer.linear = { copies: 36, angle: 0, waviness: 0 });
+      fieldsContainer.innerHTML = `
+        <div class="control-field">
+          <label class="control-label">Copies</label>
+          <div class="control-slider-row">
+            <input type="range" class="range-slider-input" id="inp-lin-copies" min="4" max="100" value="${l.copies || 36}">
+            <input type="text" class="number-pill-box" id="num-lin-copies" value="${l.copies || 36}">
+          </div>
+        </div>
+
+        <div class="control-field">
+          <label class="control-label">Waviness</label>
+          <div class="control-slider-row">
+            <input type="range" class="range-slider-input" id="inp-lin-wave" min="0" max="10" step="0.2" value="${l.waviness || 0}">
+            <input type="text" class="number-pill-box" id="num-lin-wave" value="${l.waviness || 0}">
+          </div>
+        </div>
+      `;
+
+      this.bindRangeAndNumber(fieldsContainer, 'inp-lin-copies', 'num-lin-copies', (val) => { l.copies = parseInt(val, 10); this.notifyChange(); });
+      this.bindRangeAndNumber(fieldsContainer, 'inp-lin-wave', 'num-lin-wave', (val) => { l.waviness = parseFloat(val); this.notifyChange(); });
+
     } else {
-      this.renderCartesianControls(distParams, layer);
+      const c = layer.cartesian || (layer.cartesian = { cols: 12, rows: 12 });
+      fieldsContainer.innerHTML = `
+        <div class="control-field">
+          <label class="control-label">Columns</label>
+          <div class="control-slider-row">
+            <input type="range" class="range-slider-input" id="inp-grid-cols" min="2" max="32" value="${c.cols || 12}">
+            <input type="text" class="number-pill-box" id="num-grid-cols" value="${c.cols || 12}">
+          </div>
+        </div>
+
+        <div class="control-field">
+          <label class="control-label">Rows</label>
+          <div class="control-slider-row">
+            <input type="range" class="range-slider-input" id="inp-grid-rows" min="2" max="32" value="${c.rows || 12}">
+            <input type="text" class="number-pill-box" id="num-grid-rows" value="${c.rows || 12}">
+          </div>
+        </div>
+      `;
+
+      this.bindRangeAndNumber(fieldsContainer, 'inp-grid-cols', 'num-grid-cols', (val) => { c.cols = parseInt(val, 10); this.notifyChange(); });
+      this.bindRangeAndNumber(fieldsContainer, 'inp-grid-rows', 'num-grid-rows', (val) => { c.rows = parseInt(val, 10); this.notifyChange(); });
     }
 
-    // 3. MODULADORES PARAMÉTRICOS
-    const modBlock = document.createElement('div').attachTo(container, 'inspector-block');
-    modBlock.innerHTML = `<div class="block-title">Moduladores Paramétricos</div>`;
+    container.appendChild(fieldsContainer);
 
-    // Gradación
-    this.createModifierAccordion(modBlock, 'Gradación', layer.gradation, (content, mod) => {
-      content.innerHTML = `
-        <div class="property-grid">
-          <div class="property-field">
-            <label class="field-label">Tipo</label>
-            <select id="grad-type" class="field-select">
-              <option value="rotation" ${mod.type === 'rotation' ? 'selected' : ''}>Rotación</option>
-              <option value="scale" ${mod.type === 'scale' ? 'selected' : ''}>Escala</option>
-            </select>
-          </div>
-          <div class="property-field">
-            <label class="field-label">Dirección</label>
-            <select id="grad-path" class="field-select">
-              <option value="diagonal" ${mod.pathway === 'diagonal' ? 'selected' : ''}>Diagonal</option>
-              <option value="horizontal" ${mod.pathway === 'horizontal' ? 'selected' : ''}>Horizontal</option>
-              <option value="vertical" ${mod.pathway === 'vertical' ? 'selected' : ''}>Vertical</option>
-              <option value="concentric" ${mod.pathway === 'concentric' ? 'selected' : ''}>Concéntrico</option>
-            </select>
-          </div>
-          <div class="property-field col-span-2">
-            <label class="field-label">Rango (° o %) </label>
-            <div class="dual-input">
-              <input type="range" id="grad-range" min="30" max="360" value="${mod.range || 180}">
-              <input type="number" id="grad-range-num" class="mini-num" min="30" max="360" value="${mod.range || 180}">
-            </div>
-          </div>
-        </div>
-      `;
-      content.querySelector('#grad-type').addEventListener('change', e => { mod.type = e.target.value; this.notifyChange(); });
-      content.querySelector('#grad-path').addEventListener('change', e => { mod.pathway = e.target.value; this.notifyChange(); });
-      this.bindRangeNum(content, '#grad-range', '#grad-range-num', val => { mod.range = parseFloat(val); this.notifyChange(); });
-    });
-
-    // Anomalía Focal
-    this.createModifierAccordion(modBlock, 'Anomalía Focal', layer.anomaly, (content, mod) => {
-      content.innerHTML = `
-        <div class="property-grid">
-          <div class="property-field col-span-2">
-            <label class="field-label">Radio de Perturbación</label>
-            <div class="dual-input">
-              <input type="range" id="anom-radius" min="50" max="400" value="${mod.radius || 180}">
-              <input type="number" id="anom-radius-num" class="mini-num" min="50" max="400" value="${mod.radius || 180}">
-            </div>
-          </div>
-          <div class="property-field">
-            <label class="field-label">Forma Anómala</label>
-            <select id="anom-shape" class="field-select">
-              <option value="triangle_eq" ${mod.shape === 'triangle_eq' ? 'selected' : ''}>Triángulo</option>
-              <option value="star4" ${mod.shape === 'star4' ? 'selected' : ''}>Estrella</option>
-              <option value="rhombus" ${mod.shape === 'rhombus' ? 'selected' : ''}>Rombo</option>
-              <option value="circle" ${mod.shape === 'circle' ? 'selected' : ''}>Círculo</option>
-            </select>
-          </div>
-          <div class="property-field">
-            <label class="field-label">Resaltar Carmesí</label>
-            <input type="checkbox" id="anom-highlight" ${mod.highlightColor ? 'checked' : ''} class="mt-2">
-          </div>
-        </div>
-      `;
-      this.bindRangeNum(content, '#anom-radius', '#anom-radius-num', val => { mod.radius = parseFloat(val); this.notifyChange(); });
-      content.querySelector('#anom-shape').addEventListener('change', e => { mod.shape = e.target.value; this.notifyChange(); });
-      content.querySelector('#anom-highlight').addEventListener('change', e => { mod.highlightColor = e.target.checked; this.notifyChange(); });
-    });
-
-    // Concentración Gravitatoria
-    this.createModifierAccordion(modBlock, 'Concentración Gravitatoria', layer.concentration, (content, mod) => {
-      content.innerHTML = `
-        <div class="property-grid">
-          <div class="property-field">
-            <label class="field-label">Modo</label>
-            <select id="conc-mode" class="field-select">
-              <option value="point" ${mod.mode === 'point' ? 'selected' : ''}>Punto (Atracción)</option>
-              <option value="void" ${mod.mode === 'void' ? 'selected' : ''}>Vacío (Repulsión)</option>
-            </select>
-          </div>
-          <div class="property-field">
-            <label class="field-label">Fuerza</label>
-            <div class="dual-input">
-              <input type="range" id="conc-power" min="10" max="100" value="${mod.power || 65}">
-              <input type="number" id="conc-power-num" class="mini-num" min="10" max="100" value="${mod.power || 65}">
-            </div>
-          </div>
-        </div>
-      `;
-      content.querySelector('#conc-mode').addEventListener('change', e => { mod.mode = e.target.value; this.notifyChange(); });
-      this.bindRangeNum(content, '#conc-power', '#conc-power-num', val => { mod.power = parseFloat(val); this.notifyChange(); });
-    });
-
-    // Espacio Isométrico 3D
-    this.createModifierAccordion(modBlock, 'Espacio Isométrico 3D', layer.space, (content, mod) => {
-      content.innerHTML = `
-        <div class="property-grid">
-          <div class="property-field">
-            <label class="field-label">Profundidad Extrusión</label>
-            <div class="dual-input">
-              <input type="range" id="space-depth" min="5" max="80" value="${mod.depth || 25}">
-              <input type="number" id="space-depth-num" class="mini-num" min="5" max="80" value="${mod.depth || 25}">
-            </div>
-          </div>
-          <div class="property-field">
-            <label class="field-label">Ángulo Proyección</label>
-            <div class="dual-input">
-              <input type="range" id="space-angle" min="-60" max="60" value="${mod.angle || 30}">
-              <input type="number" id="space-angle-num" class="mini-num" min="-60" max="60" value="${mod.angle || 30}">
-            </div>
-          </div>
-        </div>
-      `;
-      this.bindRangeNum(content, '#space-depth', '#space-depth-num', val => { mod.depth = parseFloat(val); this.notifyChange(); });
-      this.bindRangeNum(content, '#space-angle', '#space-angle-num', val => { mod.angle = parseFloat(val); this.notifyChange(); });
-    });
-
-    // 4. TEXTURA ANALÓGICA & ESCULPIDO DIRECTO
-    const textureBlock = document.createElement('div').attachTo(container, 'inspector-block');
-    textureBlock.innerHTML = `
-      <div class="block-title">Textura & Esculpido Manual</div>
-      
-      <div class="property-field mb-3">
-        <label class="field-label">Micro-corrugado / Jitter (Papel Washi)</label>
-        <div class="dual-input">
-          <input type="range" id="input-layer-jitter" min="0" max="6" step="0.2" value="${layer.jitter || 0}">
-          <input type="number" id="num-layer-jitter" class="mini-num" min="0" max="6" step="0.2" value="${layer.jitter || 0}">
-        </div>
-      </div>
-
-      <div class="sculpt-tools-card">
-        <div class="flex items-center justify-between mb-2">
-          <span class="field-label font-bold">Pincel de Esculpido</span>
-          <button id="toggle-brush-btn" class="btn-brush-toggle ${state.brushActive ? 'active' : ''}">
-            ${state.brushActive ? 'Pincel Activo' : 'Activar Pincel'}
-          </button>
-        </div>
-
-        <div class="brush-modes-grid mb-2">
-          <button class="brush-mode-btn ${state.brush.mode === 'peak' ? 'active' : ''}" data-mode="peak" title="Cresta afilada">▲ Pico</button>
-          <button class="brush-mode-btn ${state.brush.mode === 'smooth' ? 'active' : ''}" data-mode="smooth" title="Colina suave">∩ Suave</button>
-          <button class="brush-mode-btn ${state.brush.mode === 'twist' ? 'active' : ''}" data-mode="twist" title="Vórtice">🌀 Giro</button>
-        </div>
-
-        <div class="property-grid mb-2">
-          <div class="property-field">
-            <label class="field-label">Radio Pincel</label>
-            <input type="range" id="brush-radius" min="30" max="180" value="${state.brush.radius || 75}">
-          </div>
-          <div class="property-field">
-            <label class="field-label">Fuerza</label>
-            <input type="range" id="brush-strength" min="10" max="100" value="${state.brush.strength || 60}">
-          </div>
-        </div>
-
-        <div class="flex gap-2">
-          <button id="btn-undo-sculpt" class="btn-sub flex-1">↶ Deshacer</button>
-          <button id="btn-clear-sculpt" class="btn-sub flex-1">🗑 Limpiar</button>
-        </div>
-      </div>
+    // Quick Action: Create Moiré Dual Pair button
+    const btnMoire = document.createElement('button');
+    btnMoire.className = 'btn-action-wide';
+    btnMoire.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/></svg>
+      <span>Create Moiré Pair (Auto Rotate & Blend)</span>
     `;
-
-    this.bindRangeNum(textureBlock, '#input-layer-jitter', '#num-layer-jitter', val => {
-      layer.jitter = parseFloat(val);
+    btnMoire.addEventListener('click', () => {
+      const clone = JSON.parse(JSON.stringify(layer));
+      clone.id = `layer-${Date.now().toString().slice(-4)}`;
+      clone.name = `${layer.name} (Rotated)`;
+      clone.rotation = +(clone.rotation + 4.5).toFixed(2);
+      clone.blendMode = 'multiply';
+      state.layers.push(clone);
+      state.activeLayerId = clone.id;
+      this.render(state);
       this.notifyChange();
+      UIManager.showToast('✨ Optical Moiré pair generated');
     });
 
-    const brushToggle = textureBlock.querySelector('#toggle-brush-btn');
-    brushToggle.addEventListener('click', () => {
-      state.brushActive = !state.brushActive;
-      brushToggle.classList.toggle('active', state.brushActive);
-      brushToggle.textContent = state.brushActive ? 'Pincel Activo' : 'Activar Pincel';
-      this.notifyChange();
-    });
+    container.appendChild(btnMoire);
+  }
 
-    textureBlock.querySelectorAll('.brush-mode-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        textureBlock.querySelectorAll('.brush-mode-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        state.brush.mode = btn.dataset.mode;
+  // --- POPOVER 3: APPEARANCE & STYLE ---
+  renderStylePopover(state, layer) {
+    const container = this.popoverContainer;
+
+    const title = document.createElement('div');
+    title.className = 'popover-section-label';
+    title.textContent = 'Appearance & Style';
+    container.appendChild(title);
+
+    // Curated Palettes Grid
+    const palTitle = document.createElement('div');
+    palTitle.className = 'control-label';
+    palTitle.style.marginBottom = '8px';
+    palTitle.textContent = 'Curated Palettes';
+    container.appendChild(palTitle);
+
+    const palGrid = document.createElement('div');
+    palGrid.className = 'palette-swatches-grid';
+
+    Object.values(PALETTES).slice(0, 4).forEach(palette => {
+      const chip = document.createElement('div');
+      chip.className = 'palette-chip';
+      chip.innerHTML = `
+        <span class="palette-chip-title">${palette.name}</span>
+        <div class="palette-chip-colors">
+          ${palette.swatches.map(c => `<div class="palette-chip-color" style="background-color: ${c};"></div>`).join('')}
+        </div>
+      `;
+
+      chip.addEventListener('click', () => {
+        state.canvas.bgColor = palette.bg;
+        layer.color = palette.line;
+        this.render(state);
         this.notifyChange();
+        UIManager.showToast(`🎨 Applied ${palette.name}`);
       });
+
+      palGrid.appendChild(chip);
     });
+    container.appendChild(palGrid);
 
-    textureBlock.querySelector('#brush-radius').addEventListener('input', e => {
-      state.brush.radius = parseFloat(e.target.value);
-    });
-    textureBlock.querySelector('#brush-strength').addEventListener('input', e => {
-      state.brush.strength = parseFloat(e.target.value);
-    });
+    // Blend Mode & Canvas Background
+    const styleControls = document.createElement('div');
+    styleControls.className = 'control-grid-2x2';
+    styleControls.innerHTML = `
+      <div class="control-field">
+        <label class="control-label">Blend Mode</label>
+        <select class="select-dropdown-styled" id="select-blend-mode">
+          <option value="source-over" ${layer.blendMode === 'source-over' ? 'selected' : ''}>Normal</option>
+          <option value="multiply" ${layer.blendMode === 'multiply' ? 'selected' : ''}>Multiply (Moiré)</option>
+          <option value="difference" ${layer.blendMode === 'difference' ? 'selected' : ''}>Difference</option>
+          <option value="screen" ${layer.blendMode === 'screen' ? 'selected' : ''}>Screen</option>
+        </select>
+      </div>
 
-    textureBlock.querySelector('#btn-undo-sculpt').addEventListener('click', () => {
-      if (this.onUndoDeformation) this.onUndoDeformation();
-    });
-    textureBlock.querySelector('#btn-clear-sculpt').addEventListener('click', () => {
-      if (this.onClearDeformations) this.onClearDeformations();
-    });
-
-    this.inspectorContainer.appendChild(container);
-  }
-
-  renderCartesianControls(container, layer) {
-    if (!layer.cartesian) layer.cartesian = { gridType: 'basic', cols: 6, rows: 6 };
-    const cart = layer.cartesian;
-
-    container.innerHTML = `
-      <div class="property-grid">
-        <div class="property-field">
-          <label class="field-label">Tipo de Retícula</label>
-          <select id="cart-grid-type" class="field-select">
-            <option value="basic" ${cart.gridType === 'basic' ? 'selected' : ''}>Básica (Ortogonal)</option>
-            <option value="sliding" ${cart.gridType === 'sliding' ? 'selected' : ''}>Deslizante</option>
-            <option value="sheared" ${cart.gridType === 'sheared' ? 'selected' : ''}>Cizallada</option>
-            <option value="zigzag" ${cart.gridType === 'zigzag' ? 'selected' : ''}>Zigzag</option>
-            <option value="curved" ${cart.gridType === 'curved' ? 'selected' : ''}>Curva Armónica</option>
-          </select>
-        </div>
-
-        <div class="property-field">
-          <label class="field-label">Columnas</label>
-          <div class="dual-input">
-            <input type="range" id="cart-cols" min="1" max="24" value="${cart.cols || 6}">
-            <input type="number" id="cart-cols-num" class="mini-num" min="1" max="24" value="${cart.cols || 6}">
-          </div>
-        </div>
-
-        <div class="property-field">
-          <label class="field-label">Filas</label>
-          <div class="dual-input">
-            <input type="range" id="cart-rows" min="1" max="24" value="${cart.rows || 6}">
-            <input type="number" id="cart-rows-num" class="mini-num" min="1" max="24" value="${cart.rows || 6}">
-          </div>
+      <div class="control-field">
+        <label class="control-label">Opacity (%)</label>
+        <div class="control-slider-row">
+          <input type="range" class="range-slider-input" id="inp-opacity" min="0" max="100" value="${layer.opacity ?? 100}">
+          <input type="text" class="number-pill-box" id="num-opacity" value="${layer.opacity ?? 100}">
         </div>
       </div>
     `;
 
-    container.querySelector('#cart-grid-type').addEventListener('change', e => {
-      cart.gridType = e.target.value;
+    styleControls.querySelector('#select-blend-mode').addEventListener('change', (e) => {
+      layer.blendMode = e.target.value;
       this.notifyChange();
     });
 
-    this.bindRangeNum(container, '#cart-cols', '#cart-cols-num', val => {
-      cart.cols = parseInt(val, 10);
+    this.bindRangeAndNumber(styleControls, 'inp-opacity', 'num-opacity', (val) => {
+      layer.opacity = parseInt(val, 10);
       this.notifyChange();
     });
-    this.bindRangeNum(container, '#cart-rows', '#cart-rows-num', val => {
-      cart.rows = parseInt(val, 10);
-      this.notifyChange();
+
+    container.appendChild(styleControls);
+  }
+
+  // --- Helper: Synchronize Range Slider and Numeric Pill Input ---
+  bindRangeAndNumber(parentEl, rangeId, numberId, onChange) {
+    const rangeEl = parentEl.querySelector(`#${rangeId}`);
+    const numEl = parentEl.querySelector(`#${numberId}`);
+    if (!rangeEl || !numEl) return;
+
+    rangeEl.addEventListener('input', (e) => {
+      numEl.value = e.target.value;
+      onChange(e.target.value);
+    });
+
+    numEl.addEventListener('change', (e) => {
+      let val = parseFloat(e.target.value);
+      if (isNaN(val)) val = rangeEl.value;
+      const min = parseFloat(rangeEl.min);
+      const max = parseFloat(rangeEl.max);
+      val = Math.max(min, Math.min(max, val));
+      numEl.value = val;
+      rangeEl.value = val;
+      onChange(val);
     });
   }
 
-  renderPolarControls(container, layer) {
-    if (!layer.polar) layer.polar = { scheme: 'centrifugal', rays: 36, rings: 5, radius: 0.42, spiralTwist: 0 };
-    const polar = layer.polar;
-
-    container.innerHTML = `
-      <div class="property-grid">
-        <div class="property-field">
-          <label class="field-label">Esquema Polar</label>
-          <select id="polar-scheme" class="field-select">
-            <option value="centrifugal" ${polar.scheme === 'centrifugal' ? 'selected' : ''}>Centrífugo (Rayos)</option>
-            <option value="concentric" ${polar.scheme === 'concentric' ? 'selected' : ''}>Concéntrico (Anillos)</option>
-            <option value="spiral" ${polar.scheme === 'spiral' ? 'selected' : ''}>Espiral Dinámica</option>
-          </select>
-        </div>
-
-        <div class="property-field">
-          <label class="field-label">Número de Rayos (Frecuencia)</label>
-          <div class="dual-input">
-            <input type="range" id="polar-rays" min="4" max="96" value="${polar.rays || 36}">
-            <input type="number" id="polar-rays-num" class="mini-num" min="4" max="96" value="${polar.rays || 36}">
-          </div>
-        </div>
-
-        <div class="property-field">
-          <label class="field-label">Anillos Radiales</label>
-          <div class="dual-input">
-            <input type="range" id="polar-rings" min="1" max="18" value="${polar.rings || 5}">
-            <input type="number" id="polar-rings-num" class="mini-num" min="1" max="18" value="${polar.rings || 5}">
-          </div>
-        </div>
-
-        <div class="property-field">
-          <label class="field-label">Radio Cobertura</label>
-          <div class="dual-input">
-            <input type="range" id="polar-radius" min="0.1" max="0.55" step="0.01" value="${polar.radius || 0.42}">
-            <input type="number" id="polar-radius-num" class="mini-num" min="0.1" max="0.55" step="0.01" value="${polar.radius || 0.42}">
-          </div>
-        </div>
-      </div>
-    `;
-
-    container.querySelector('#polar-scheme').addEventListener('change', e => {
-      polar.scheme = e.target.value;
-      this.notifyChange();
-    });
-
-    this.bindRangeNum(container, '#polar-rays', '#polar-rays-num', val => {
-      polar.rays = parseInt(val, 10);
-      this.notifyChange();
-    });
-    this.bindRangeNum(container, '#polar-rings', '#polar-rings-num', val => {
-      polar.rings = parseInt(val, 10);
-      this.notifyChange();
-    });
-    this.bindRangeNum(container, '#polar-radius', '#polar-radius-num', val => {
-      polar.radius = parseFloat(val);
-      this.notifyChange();
-    });
-  }
-
-  renderLinearControls(container, layer) {
-    if (!layer.linear) layer.linear = { copies: 36, angle: 0, waviness: 0 };
-    const lin = layer.linear;
-
-    container.innerHTML = `
-      <div class="property-grid">
-        <div class="property-field">
-          <label class="field-label">Copias de Líneas</label>
-          <div class="dual-input">
-            <input type="range" id="lin-copies" min="2" max="120" value="${lin.copies || 36}">
-            <input type="number" id="lin-copies-num" class="mini-num" min="2" max="120" value="${lin.copies || 36}">
-          </div>
-        </div>
-
-        <div class="property-field">
-          <label class="field-label">Ángulo de Inclinación (°)</label>
-          <div class="dual-input">
-            <input type="range" id="lin-angle" min="0" max="180" value="${lin.angle || 0}">
-            <input type="number" id="lin-angle-num" class="mini-num" min="0" max="180" value="${lin.angle || 0}">
-          </div>
-        </div>
-
-        <div class="property-field col-span-2">
-          <label class="field-label">Ondulación Armónica</label>
-          <div class="dual-input">
-            <input type="range" id="lin-wave" min="0" max="25" step="0.5" value="${lin.waviness || 0}">
-            <input type="number" id="lin-wave-num" class="mini-num" min="0" max="25" step="0.5" value="${lin.waviness || 0}">
-          </div>
-        </div>
-      </div>
-    `;
-
-    this.bindRangeNum(container, '#lin-copies', '#lin-copies-num', val => {
-      lin.copies = parseInt(val, 10);
-      this.notifyChange();
-    });
-    this.bindRangeNum(container, '#lin-angle', '#lin-angle-num', val => {
-      lin.angle = parseFloat(val);
-      this.notifyChange();
-    });
-    this.bindRangeNum(container, '#lin-wave', '#lin-wave-num', val => {
-      lin.waviness = parseFloat(val);
-      this.notifyChange();
-    });
-  }
-
-  /**
-   * Propiedades de Capa de Elemento / Acento
-   */
-  renderElementProperties(layer, state) {
-    const container = document.createElement('div');
-    container.className = 'inspector-sections-stack';
-
-    const block = document.createElement('div').attachTo(container, 'inspector-block');
-    block.innerHTML = `
-      <div class="block-title">Elemento de Foco</div>
-      
-      <div class="shape-picker-grid mb-3" id="accent-shape-picker"></div>
-
-      <div class="property-grid">
-        <div class="property-field">
-          <label class="field-label">Tamaño</label>
-          <div class="dual-input">
-            <input type="range" id="elem-size" min="20" max="600" value="${layer.size || 200}">
-            <input type="number" id="elem-size-num" class="mini-num" min="20" max="600" value="${layer.size || 200}">
-          </div>
-        </div>
-
-        <div class="property-field">
-          <label class="field-label">Rotación (°)</label>
-          <div class="dual-input">
-            <input type="range" id="elem-rot" min="0" max="360" value="${layer.rotation || 0}">
-            <input type="number" id="elem-rot-num" class="mini-num" min="0" max="360" value="${layer.rotation || 0}">
-          </div>
-        </div>
-
-        <div class="property-field">
-          <label class="field-label">Posición X (%)</label>
-          <div class="dual-input">
-            <input type="range" id="elem-pos-x" min="0" max="100" value="${layer.posX ?? 50}">
-            <input type="number" id="elem-pos-x-num" class="mini-num" min="0" max="100" value="${layer.posX ?? 50}">
-          </div>
-        </div>
-
-        <div class="property-field">
-          <label class="field-label">Posición Y (%)</label>
-          <div class="dual-input">
-            <input type="range" id="elem-pos-y" min="0" max="100" value="${layer.posY ?? 50}">
-            <input type="number" id="elem-pos-y-num" class="mini-num" min="0" max="100" value="${layer.posY ?? 50}">
-          </div>
-        </div>
-
-        <div class="property-field">
-          <label class="field-label">Color</label>
-          <input type="color" id="elem-color" class="color-picker-input" value="${layer.color || '#ef4444'}">
-        </div>
-
-        <div class="property-field">
-          <label class="field-label">Modo Relleno</label>
-          <div class="segmented-control">
-            <button class="seg-btn ${layer.fillMode === 'fill' ? 'active' : ''}" data-fill="fill">Relleno</button>
-            <button class="seg-btn ${layer.fillMode !== 'fill' ? 'active' : ''}" data-fill="stroke">Trazo</button>
-          </div>
-        </div>
-      </div>
-    `;
-
-    const shapeGrid = block.querySelector('#accent-shape-picker');
-    SHAPE_KEYS.forEach(key => {
-      const s = Shapes[key];
-      const btn = document.createElement('button');
-      btn.className = `shape-btn ${layer.shape === key ? 'active' : ''}`;
-      btn.innerHTML = s.iconSvg;
-      btn.title = s.name;
-      btn.addEventListener('click', () => {
-        layer.shape = key;
-        shapeGrid.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.renderLayersPanel(state);
-        this.notifyChange();
-      });
-      shapeGrid.appendChild(btn);
-    });
-
-    this.bindRangeNum(block, '#elem-size', '#elem-size-num', val => { layer.size = parseFloat(val); this.notifyChange(); });
-    this.bindRangeNum(block, '#elem-rot', '#elem-rot-num', val => { layer.rotation = parseFloat(val); this.notifyChange(); });
-    this.bindRangeNum(block, '#elem-pos-x', '#elem-pos-x-num', val => { layer.posX = parseFloat(val); this.notifyChange(); });
-    this.bindRangeNum(block, '#elem-pos-y', '#elem-pos-y-num', val => { layer.posY = parseFloat(val); this.notifyChange(); });
-
-    block.querySelector('#elem-color').addEventListener('input', e => {
-      layer.color = e.target.value;
-      this.notifyChange();
-    });
-
-    block.querySelectorAll('.segmented-control .seg-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        block.querySelectorAll('.segmented-control .seg-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        layer.fillMode = btn.dataset.fill;
-        this.notifyChange();
-      });
-    });
-
-    this.inspectorContainer.appendChild(container);
-  }
-
-  createModifierAccordion(parent, title, modObj, renderContentFn) {
-    if (!modObj) return;
-    const item = document.createElement('div');
-    item.className = 'mod-accordion';
-
-    const head = document.createElement('div');
-    head.className = 'mod-accordion-header';
-    head.innerHTML = `
-      <div class="flex items-center gap-2">
-        <input type="checkbox" id="mod-toggle" class="mod-checkbox" ${modObj.enabled ? 'checked' : ''}>
-        <span class="mod-title">${title}</span>
-      </div>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="accordion-arrow"><polyline points="6 9 12 15 18 9"/></svg>
-    `;
-
-    const body = document.createElement('div');
-    body.className = `mod-accordion-body ${modObj.enabled ? 'expanded' : ''}`;
-
-    renderContentFn(body, modObj);
-
-    head.querySelector('#mod-toggle').addEventListener('change', (e) => {
-      modObj.enabled = e.target.checked;
-      body.classList.toggle('expanded', modObj.enabled);
-      this.notifyChange();
-    });
-
-    head.addEventListener('click', (e) => {
-      if (e.target.id === 'mod-toggle') return;
-      body.classList.toggle('expanded');
-    });
-
-    item.appendChild(head);
-    item.appendChild(body);
-    parent.appendChild(item);
-  }
-
-  bindRangeNum(parent, rangeSelector, numSelector, callback) {
-    const range = parent.querySelector(rangeSelector);
-    const num = parent.querySelector(numSelector);
-    if (!range || !num) return;
-
-    range.addEventListener('input', () => {
-      num.value = range.value;
-      callback(range.value);
-    });
-
-    num.addEventListener('input', () => {
-      range.value = num.value;
-      callback(num.value);
-    });
-  }
-
+  // --- Static Toast Notification ---
   static showToast(message) {
     let toast = document.getElementById('studio-toast');
     if (!toast) {
       toast = document.createElement('div');
       toast.id = 'studio-toast';
-      toast.className = 'studio-toast';
+      toast.className = 'toast';
       document.body.appendChild(toast);
     }
     toast.textContent = message;
@@ -1070,13 +701,6 @@ export class UIManager {
     clearTimeout(toast._timeout);
     toast._timeout = setTimeout(() => {
       toast.classList.remove('show');
-    }, 2400);
+    }, 2200);
   }
 }
-
-// Helper para adjuntar elemento y clase
-HTMLElement.prototype.attachTo = function(parent, className) {
-  this.className = className;
-  parent.appendChild(this);
-  return this;
-};

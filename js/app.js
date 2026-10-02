@@ -1,6 +1,7 @@
 /**
- * Abstract Studio - Orquestador Principal de la Creative Suite
- * Conecta el motor gráfico Dual Canvas/SVG con el Panel de Capas e Inspector Figma.
+ * Abstract Studio - Application Orchestrator
+ * Connects the dual Canvas/SVG rendering engine with the Figma-style Popover UI.
+ * Fully translated to English.
  */
 
 import { AbstractEngine, ASPECT_RATIOS } from './engine.js';
@@ -12,14 +13,14 @@ import { PALETTES } from './palettes.js';
 class App {
   constructor() {
     this.canvas = document.getElementById('studio-canvas');
-    this.canvasWrapper = document.querySelector('.canvas-wrapper');
+    this.artboardCard = document.querySelector('.canvas-artboard-card');
     this.zoomLevel = 1.0;
     this.isSculpting = false;
     this.lastSculptPos = null;
 
     this.engine = new AbstractEngine();
 
-    // Estado inicial: Efecto Moiré Radial Dual por defecto
+    // Default state: Dual Radial Moiré with white canvas
     const defaultPreset = PRESETS[0];
     this.state = JSON.parse(JSON.stringify(defaultPreset.state));
     this.state.activeLayerId = this.state.layers[1]?.id || this.state.layers[0]?.id;
@@ -33,21 +34,12 @@ class App {
   initUI() {
     this.uiManager = new UIManager({
       layersContainerId: 'layers-sidebar',
-      inspectorContainerId: 'inspector-sidebar',
+      popoverContainerId: 'popover-inspector',
+      toolRailId: 'tool-rail',
       onStateChange: () => this.render(),
       onLayerSelect: (layerId) => {
         this.state.activeLayerId = layerId;
         this.render();
-      },
-      onUndoDeformation: () => {
-        this.engine.undoDeformation();
-        this.render();
-        UIManager.showToast('↶ Última deformación deshecha');
-      },
-      onClearDeformations: () => {
-        this.engine.clearDeformations();
-        this.render();
-        UIManager.showToast('🗑️ Deformaciones limpiadas');
       }
     });
 
@@ -66,14 +58,15 @@ class App {
     if (resEl) {
       const bounds = this.engine.getBounds(this.state.canvas.aspectRatio);
       const activeCount = this.state.layers.filter(l => l.visible).length;
-      resEl.textContent = `${bounds.width} × ${bounds.height} PX • ${activeCount} CAPAS • RETINA HiDPI`;
+      resEl.textContent = `${bounds.width} × ${bounds.height} PX • ${activeCount} LAYERS • RETINA HiDPI`;
     }
   }
 
   applyZoom() {
-    if (this.canvas) {
-      this.canvas.style.transform = `scale(${this.zoomLevel})`;
-      this.canvas.style.transformOrigin = 'center center';
+    const target = this.artboardCard || this.canvas;
+    if (target) {
+      target.style.transform = `scale(${this.zoomLevel})`;
+      target.style.transformOrigin = 'center center';
     }
   }
 
@@ -87,7 +80,7 @@ class App {
   }
 
   setupToolbar() {
-    // 1. Selector de Aspect Ratio
+    // 1. Aspect Ratio dropdown
     const aspectSelect = document.getElementById('canvas-aspect-ratio');
     if (aspectSelect) {
       aspectSelect.value = this.state.canvas.aspectRatio || '1:1';
@@ -97,42 +90,42 @@ class App {
       });
     }
 
-    // 2. Toggle Safe Bounds
+    // 2. Safe Bounds toggle
     const boundsToggle = document.getElementById('studio-bounds-toggle');
     if (boundsToggle) {
       boundsToggle.addEventListener('click', () => {
         this.state.canvas.showSafeBounds = !this.state.canvas.showSafeBounds;
         boundsToggle.classList.toggle('active', this.state.canvas.showSafeBounds);
         this.render();
-        UIManager.showToast(this.state.canvas.showSafeBounds ? '📐 Guías de corte activadas' : '📐 Guías ocultas');
+        UIManager.showToast(this.state.canvas.showSafeBounds ? '📐 Bounds guides visible' : '📐 Guides hidden');
       });
     }
 
-    // 3. Toggle Invertir Figura/Fondo
+    // 3. Invert Figure / Ground
     const invertToggle = document.getElementById('studio-invert-toggle');
     if (invertToggle) {
       invertToggle.addEventListener('click', () => {
         this.state.canvas.invertFigureGround = !this.state.canvas.invertFigureGround;
         invertToggle.classList.toggle('active', this.state.canvas.invertFigureGround);
         this.render();
-        UIManager.showToast('🌗 Figura / Fondo invertido');
+        UIManager.showToast('🌗 Inverted figure / ground');
       });
     }
 
-    // 4. Zoom
+    // 4. Zoom buttons
     const btnZoomIn = document.getElementById('btn-zoom-in');
     const btnZoomOut = document.getElementById('btn-zoom-out');
     const btnZoomReset = document.getElementById('btn-zoom-reset');
 
     if (btnZoomIn) {
       btnZoomIn.addEventListener('click', () => {
-        this.zoomLevel = Math.min(2.5, this.zoomLevel + 0.15);
+        this.zoomLevel = Math.min(2.5, +(this.zoomLevel + 0.15).toFixed(2));
         this.applyZoom();
       });
     }
     if (btnZoomOut) {
       btnZoomOut.addEventListener('click', () => {
-        this.zoomLevel = Math.max(0.4, this.zoomLevel - 0.15);
+        this.zoomLevel = Math.max(0.4, +(this.zoomLevel - 0.15).toFixed(2));
         this.applyZoom();
       });
     }
@@ -145,7 +138,7 @@ class App {
   }
 
   setupEvents() {
-    // 1. Esculpido Directo sobre Canvas con Ratón
+    // 1. Interactive Canvas pointer events (when brush / sculpting is active)
     this.canvas.addEventListener('pointerdown', (e) => {
       if (!this.state.brushActive) return;
       const coords = this.getCanvasCoords(e);
@@ -190,7 +183,7 @@ class App {
       this.render();
     });
 
-    // 2. Descargar SVG Vectorial
+    // 2. Download SVG File
     const btnDownload = document.getElementById('btn-download-svg');
     if (btnDownload) {
       btnDownload.addEventListener('click', () => {
@@ -198,21 +191,21 @@ class App {
         const ratio = this.state.canvas.aspectRatio.replace(':', 'x');
         const filename = `abstract-studio-${ratio}-${Date.now().toString().slice(-4)}.svg`;
         Exporter.downloadSVG(svgMarkup, filename);
-        UIManager.showToast('✅ SVG vectorial puro descargado');
+        UIManager.showToast('✅ Pure vector SVG downloaded');
       });
     }
 
-    // 3. Copiar SVG
+    // 3. Copy SVG to Clipboard
     const btnCopySvg = document.getElementById('btn-copy-svg');
     if (btnCopySvg) {
       btnCopySvg.addEventListener('click', async () => {
         const svgMarkup = this.engine.renderSVG(this.state);
         await Exporter.copySVGToClipboard(svgMarkup);
-        UIManager.showToast('📋 SVG copiado al portapapeles');
+        UIManager.showToast('📋 SVG copied to clipboard');
       });
     }
 
-    // 4. Modal de Código
+    // 4. View JSON Configuration Modal
     const btnViewCode = document.getElementById('btn-view-code');
     const modalCode = document.getElementById('modal-code');
     const btnCloseModal = document.getElementById('btn-close-modal');
@@ -236,11 +229,11 @@ class App {
 
       btnCopyCodeModal.addEventListener('click', async () => {
         await Exporter.copyText(codeSnippetEl.textContent);
-        UIManager.showToast('💻 Configuración copiada al portapapeles');
+        UIManager.showToast('💻 Configuration copied to clipboard');
       });
     }
 
-    // 5. Botón Mutar (Evolución armónica de Moiré / parámetros de capa activa)
+    // 5. Random / Harmonic Mutation button
     const btnMutate = document.getElementById('btn-mutate');
     if (btnMutate) {
       btnMutate.addEventListener('click', () => {
@@ -251,7 +244,7 @@ class App {
             if (activeLayer.rotation < 0) activeLayer.rotation += 360;
           } else if (activeLayer.distribution === 'linear') {
             if (activeLayer.linear) {
-              activeLayer.linear.waviness = +(Math.random() * 6).toFixed(1);
+              activeLayer.linear.waviness = +(Math.random() * 5).toFixed(1);
             }
           } else {
             activeLayer.rotation = +(activeLayer.rotation + (Math.random() > 0.5 ? 15 : -15)).toFixed(1);
@@ -259,7 +252,7 @@ class App {
         }
         this.render();
         this.uiManager.render(this.state);
-        UIManager.showToast('✨ Mutación armónica aplicada');
+        UIManager.showToast('✨ Harmonic mutation applied');
       });
     }
   }

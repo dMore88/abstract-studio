@@ -1,16 +1,17 @@
 /**
- * Abstract Studio - Presets Multicapa y Composiciones Moiré
+ * Abstract Studio - Multilayer Presets & Moiré Compositions
+ * Curated for optical interference and clean parametric generative art.
  */
 
 export const PRESETS = [
   {
     id: 'moire_radial',
-    name: 'Moiré Radial (Interferencia Óptica)',
-    description: 'Dos capas de radiación centrífuga superpuestas con ligero desplazamiento angular y modo diferencia.',
+    name: 'Radial Moiré (Optical Interference)',
+    description: 'Two centrifugal radiation layers overlaid with subtle angular rotation (4.5°) producing dense moiré interference.',
     state: {
       canvas: {
         aspectRatio: '1:1',
-        bgColor: '#0a0a0d',
+        bgColor: '#ffffff',
         showSafeBounds: false,
         invertFigureGround: false
       },
@@ -19,7 +20,7 @@ export const PRESETS = [
       layers: [
         {
           id: 'layer-1',
-          name: 'Radiación Base A',
+          name: 'Layer 1',
           type: 'pattern',
           visible: true,
           opacity: 100,
@@ -30,7 +31,7 @@ export const PRESETS = [
           rotation: 0,
           offsetX: 0,
           offsetY: 0,
-          color: '#f4f4f5',
+          color: '#363a4d',
           strokeWidth: 1.2,
           fillMode: 'stroke',
           distribution: 'polar',
@@ -52,18 +53,18 @@ export const PRESETS = [
         },
         {
           id: 'layer-2',
-          name: 'Radiación Moiré B',
+          name: 'Layer 2',
           type: 'pattern',
           visible: true,
           opacity: 100,
-          blendMode: 'difference',
+          blendMode: 'multiply',
           shape: 'line',
           width: 50,
           height: 50,
           rotation: 4.5,
           offsetX: 0,
           offsetY: 0,
-          color: '#f4f4f5',
+          color: '#363a4d',
           strokeWidth: 1.2,
           fillMode: 'stroke',
           distribution: 'polar',
@@ -88,12 +89,12 @@ export const PRESETS = [
   },
   {
     id: 'moire_grid',
-    name: 'Moiré Ortogonal (Tejido de Malla)',
-    description: 'Dos retículas cartesianas de líneas finas con rotación asimétrica de 3.5 grados.',
+    name: 'Orthogonal Moiré (Mesh Weave)',
+    description: 'Two cartesian grids of hairline strokes rotated by 3.5 degrees to create optical grid weave.',
     state: {
       canvas: {
         aspectRatio: '1:1',
-        bgColor: '#080c14',
+        bgColor: '#ffffff',
         showSafeBounds: false,
         invertFigureGround: false
       },
@@ -101,136 +102,60 @@ export const PRESETS = [
       brush: { mode: 'peak', radius: 75, strength: 60 },
       layers: [
         {
-          id: 'layer-grid-1',
-          name: 'Retícula Primaria',
+          id: 'grid-1',
+          name: 'Grid Layer A',
           type: 'pattern',
           visible: true,
           opacity: 90,
           blendMode: 'source-over',
           shape: 'line',
-          width: 80,
-          height: 80,
+          width: 70,
+          height: 70,
           rotation: 0,
           offsetX: 0,
           offsetY: 0,
-          color: '#38bdf8',
+          color: '#2a2d3e',
           strokeWidth: 1.0,
           fillMode: 'stroke',
           distribution: 'cartesian',
-          cartesian: {
-            gridType: 'basic',
-            cols: 14,
-            rows: 14
-          },
+          cartesian: { gridType: 'basic', cols: 24, rows: 24 },
           gradation: { enabled: false },
           anomaly: { enabled: false },
-          similarity: { enabled: false },
-          concentration: { enabled: false },
-          space: { enabled: false },
           jitter: 0
         },
         {
-          id: 'layer-grid-2',
-          name: 'Retícula Angular (Moiré)',
+          id: 'grid-2',
+          name: 'Grid Layer B (Rotated)',
           type: 'pattern',
           visible: true,
           opacity: 90,
-          blendMode: 'difference',
+          blendMode: 'multiply',
           shape: 'line',
-          width: 80,
-          height: 80,
-          rotation: 4.2,
+          width: 70,
+          height: 70,
+          rotation: 3.5,
           offsetX: 0,
           offsetY: 0,
-          color: '#f43f5e',
+          color: '#2a2d3e',
           strokeWidth: 1.0,
           fillMode: 'stroke',
           distribution: 'cartesian',
-          cartesian: {
-            gridType: 'basic',
-            cols: 14,
-            rows: 14
-          },
+          cartesian: { gridType: 'basic', cols: 24, rows: 24 },
           gradation: { enabled: false },
           anomaly: { enabled: false },
-          similarity: { enabled: false },
-          concentration: { enabled: false },
-          space: { enabled: false },
           jitter: 0
         }
       ]
     }
   },
   {
-    id: 'washi_zen',
-    name: 'Grabado Washi & Sol Zen',
-    description: 'Trama lineal continua con micro-corrugado táctil y elemento de acento circular de contraste.',
-    state: {
-      canvas: {
-        aspectRatio: '9:16',
-        bgColor: '#090d16',
-        showSafeBounds: false,
-        invertFigureGround: false
-      },
-      brushActive: false,
-      brush: { mode: 'peak', radius: 80, strength: 70 },
-      layers: [
-        {
-          id: 'layer-accent-zen',
-          name: 'Sol Zen Carmesí',
-          type: 'element',
-          visible: true,
-          opacity: 90,
-          blendMode: 'source-over',
-          shape: 'circle',
-          size: 260,
-          posX: 50,
-          posY: 38,
-          rotation: 0,
-          color: '#ef4444',
-          strokeWidth: 2,
-          fillMode: 'fill'
-        },
-        {
-          id: 'layer-washi-lines',
-          name: 'Trama Washi con Jitter',
-          type: 'pattern',
-          visible: true,
-          opacity: 95,
-          blendMode: 'difference',
-          shape: 'line',
-          width: 90,
-          height: 90,
-          rotation: 0,
-          offsetX: 0,
-          offsetY: 0,
-          color: '#f8fafc',
-          strokeWidth: 1.3,
-          fillMode: 'stroke',
-          distribution: 'linear',
-          linear: {
-            copies: 52,
-            angle: 0,
-            waviness: 1.5
-          },
-          gradation: { enabled: false },
-          anomaly: { enabled: false },
-          similarity: { enabled: false },
-          concentration: { enabled: false },
-          space: { enabled: false },
-          jitter: 1.4
-        }
-      ]
-    }
-  },
-  {
-    id: 'modular_gradation',
-    name: 'Gradación & Anomalía Focal',
-    description: 'Retícula deslizante de estrellas y rombos con gradación diagonal y perturbación gravitatoria focal.',
+    id: 'bauhaus_minimal',
+    name: 'Bauhaus Primaries (Minimal Counterpoint)',
+    description: 'Clean geometry with primary colors, strict grid rhythms, and balanced glyph accents.',
     state: {
       canvas: {
         aspectRatio: '1:1',
-        bgColor: '#121217',
+        bgColor: '#ffffff',
         showSafeBounds: false,
         invertFigureGround: false
       },
@@ -238,46 +163,43 @@ export const PRESETS = [
       brush: { mode: 'peak', radius: 75, strength: 60 },
       layers: [
         {
-          id: 'layer-star-flow',
-          name: 'Matriz Paramétrica de Estrellas',
+          id: 'bauhaus-1',
+          name: 'Geometric Grid',
           type: 'pattern',
           visible: true,
           opacity: 100,
           blendMode: 'source-over',
-          shape: 'star4',
-          width: 52,
-          height: 52,
+          shape: 'circle',
+          width: 45,
+          height: 45,
           rotation: 0,
           offsetX: 0,
           offsetY: 0,
-          color: '#e2e8f0',
-          strokeWidth: 1.4,
+          color: '#1a1b22',
+          strokeWidth: 1.8,
           fillMode: 'stroke',
           distribution: 'cartesian',
-          cartesian: {
-            gridType: 'sliding',
-            cols: 7,
-            rows: 7,
-            slideOffset: 0.5
-          },
-          gradation: {
-            enabled: true,
-            type: 'rotation',
-            pathway: 'diagonal',
-            range: 180
-          },
-          anomaly: {
-            enabled: true,
-            epicenterX: 0.5,
-            epicenterY: 0.5,
-            radius: 190,
-            shape: 'rhombus',
-            highlightColor: true
-          },
-          similarity: { enabled: false },
-          concentration: { enabled: false },
-          space: { enabled: false },
+          cartesian: { gridType: 'basic', cols: 7, rows: 7 },
+          gradation: { enabled: false },
+          anomaly: { enabled: false },
           jitter: 0
+        },
+        {
+          id: 'bauhaus-2',
+          name: 'Accent Arch',
+          type: 'element',
+          visible: true,
+          opacity: 90,
+          blendMode: 'multiply',
+          shape: 'horseshoe',
+          width: 140,
+          height: 140,
+          rotation: 45,
+          offsetX: 20,
+          offsetY: -30,
+          color: '#d9383a',
+          strokeWidth: 2,
+          fillMode: 'fill'
         }
       ]
     }
