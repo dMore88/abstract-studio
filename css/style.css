@@ -1,24 +1,24 @@
 /* ==========================================================================
-   Abstract Studio - Modern Figma Studio Aesthetic (Light Canvas / Dot-Grid)
+   Abstract Studio - Exact Figma Studio Implementation
+   Directly mapped from Figma Node 5763:1691 (Abstract studio CANVAS)
    ========================================================================== */
 
 :root {
-  --bg-body: #EDEFF2;
-  --dot-color: rgba(0, 0, 0, 0.14);
-  --card-bg: #FFFFFF;
-  --card-border: rgba(0, 0, 0, 0.06);
-  --card-shadow: 0 20px 48px -10px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.04);
-  
-  --dark-solid: #18191C;
-  --dark-hover: #2B2D33;
-  --dark-thumb: #0E0F11;
-  
+  /* Exact Figma Color Tokens */
+  --bg-body: #EEEEF4;
+  --bg-card: #FFFFFF;
+  --bg-layer-active: #282A36;
+  --bg-layer-inactive: #EEEEF4;
   --text-main: #18191C;
   --text-muted: #717680;
   --text-dim: #9CA3AF;
   
   --border-light: #E2E4E8;
-  --border-dark: #18191C;
+  --border-dark: #282A36;
+  
+  /* Exact Figma Shadows */
+  --shadow-popover: 0 3px 6px rgba(15, 38, 72, 0.10), 0 10px 20px rgba(15, 38, 72, 0.15);
+  --shadow-artboard: 0 1px 2px rgba(15, 38, 72, 0.12), 0 1px 3px rgba(15, 38, 72, 0.24);
   
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -33,8 +33,9 @@
 body {
   font-family: var(--font-sans);
   background-color: var(--bg-body);
-  background-image: radial-gradient(var(--dot-color) 1.2px, transparent 1.2px);
-  background-size: 18px 18px;
+  /* Exact Figma 8% opacity cross/plus grid pattern */
+  background-image: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M11 9h2v2h2v2h-2v2h-2v-2H9v-2h2V9z' fill='%23000000' fill-opacity='0.08'/%3E%3C/svg%3E");
+  background-size: 24px 24px;
   background-position: center center;
   color: var(--text-main);
   height: 100vh;
@@ -45,13 +46,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ---------------- Top Bar ---------------- */
+/* ---------------- Top Bar (Exact Figma Application header) ---------------- */
 .topbar {
-  height: 56px;
+  height: 68px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 26px;
   z-index: 40;
   background: transparent;
   flex-shrink: 0;
@@ -90,14 +91,15 @@ body {
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .topbar-pill-btn {
   background: #FFFFFF;
   border: 1px solid var(--border-light);
   border-radius: 9999px;
-  padding: 7px 15px;
+  height: 40px;
+  padding: 0 16px;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-main);
@@ -120,26 +122,26 @@ body {
   transform: translateY(0);
 }
 
-/* ---------------- Workspace Layout ---------------- */
+/* ---------------- Workspace Layout (Exact Figma Pattern workspace) ---------------- */
 .workspace {
   position: relative;
   flex: 1;
   width: 100%;
-  height: calc(100vh - 56px);
+  height: calc(100vh - 68px);
   overflow: hidden;
   display: flex;
 }
 
-/* ---------------- Left Panel: Layers ---------------- */
+/* ---------------- Left Panel: Layers (Width 344px, Height 72px items) ---------------- */
 .layers-panel {
   position: absolute;
-  left: 24px;
-  top: 12px;
-  width: 250px;
+  left: 26px;
+  top: 16px;
+  width: 344px;
   z-index: 25;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   pointer-events: auto;
 }
 
@@ -173,15 +175,16 @@ body {
 .btn-add-layer {
   background: #FFFFFF;
   border: 1px solid var(--border-light);
-  border-radius: 9999px;
-  padding: 5px 12px;
+  border-radius: 16px;
+  height: 40px;
+  padding: 0 14px;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-main);
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   transition: all 0.15s ease;
 }
@@ -194,18 +197,19 @@ body {
 .layers-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: calc(100vh - 160px);
+  gap: 10px;
+  max-height: calc(100vh - 170px);
   overflow-y: auto;
   padding-bottom: 8px;
 }
 
-/* Selected Layer Card (Black Solid Background) */
+/* Selected Layer Card (#282A36 solid, height 72px, radius 8px) */
 .layer-card.active {
-  background: var(--dark-solid);
+  background: var(--bg-layer-active);
   color: #FFFFFF;
-  border-radius: 12px;
-  padding: 10px 12px;
+  border-radius: 8px;
+  height: 72px;
+  padding: 0 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -215,7 +219,7 @@ body {
 }
 
 .layer-card.active .layer-thumb {
-  background: var(--dark-thumb);
+  background: #14151B;
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: #FFFFFF;
 }
@@ -236,13 +240,14 @@ body {
   color: #FFFFFF;
 }
 
-/* Unselected Layer Card (White / Light Background) */
+/* Unselected Layer Card (#EEEEF4, height 72px, radius 8px) */
 .layer-card:not(.active) {
-  background: #FFFFFF;
+  background: var(--bg-layer-inactive);
   color: var(--text-main);
   border: 1px solid var(--border-light);
-  border-radius: 12px;
-  padding: 10px 12px;
+  border-radius: 8px;
+  height: 72px;
+  padding: 0 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -253,11 +258,11 @@ body {
 
 .layer-card:not(.active):hover {
   border-color: #D1D5DB;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.06);
+  background: #FFFFFF;
 }
 
 .layer-card:not(.active) .layer-thumb {
-  background: #F4F5F7;
+  background: #FFFFFF;
   border: 1px solid var(--border-light);
   color: var(--text-main);
 }
@@ -281,16 +286,16 @@ body {
 .layer-card-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
   flex: 1;
 }
 
 .layer-thumb {
-  width: 42px;
-  height: 42px;
-  min-width: 42px;
-  border-radius: 8px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -344,7 +349,7 @@ body {
   transition: color 0.15s;
 }
 
-/* ---------------- Center Canvas Viewport ---------------- */
+/* ---------------- Center Canvas Viewport (Moiré artwork) ---------------- */
 .canvas-viewport {
   flex: 1;
   display: flex;
@@ -358,7 +363,7 @@ body {
 /* Canvas Header Bar */
 .canvas-header-bar {
   position: absolute;
-  top: 12px;
+  top: 16px;
   left: 0;
   right: 0;
   display: flex;
@@ -392,7 +397,7 @@ body {
 }
 
 .aspect-pill-arrow {
-  background: var(--dark-solid);
+  background: var(--bg-layer-active);
   color: #FFFFFF;
   width: 20px;
   height: 20px;
@@ -405,7 +410,7 @@ body {
 
 .canvas-quick-actions {
   position: absolute;
-  right: 76px;
+  right: 80px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -413,8 +418,8 @@ body {
 }
 
 .btn-circle-action {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 9999px;
   background: #FFFFFF;
   border: 1px solid var(--border-light);
@@ -433,9 +438,9 @@ body {
 }
 
 .btn-circle-action.active {
-  background: var(--dark-solid);
+  background: var(--bg-layer-active);
   color: #FFFFFF;
-  border-color: var(--dark-solid);
+  border-color: var(--bg-layer-active);
 }
 
 /* Canvas Card Wrapper */
@@ -448,39 +453,41 @@ body {
   padding: 60px 80px;
 }
 
+/* Exact Figma 20px stroke white frame around Moiré artwork */
 .canvas-artboard-card {
-  background: #FFFFFF;
-  border-radius: 18px;
-  padding: 12px;
-  box-shadow: var(--card-shadow);
-  border: 1px solid var(--card-border);
+  background: var(--bg-body);
+  border-radius: 20px;
+  border: 20px solid #FFFFFF;
+  box-shadow: var(--shadow-artboard);
   display: flex;
   align-items: center;
   justify-content: center;
   max-width: 72vh;
   max-height: 72vh;
+  aspect-ratio: 1 / 1;
   transition: transform 0.12s ease-out;
 }
 
 .studio-canvas {
   width: 100%;
   height: 100%;
-  border-radius: 12px;
+  border-radius: 8px;
   display: block;
 }
 
-/* Floating Zoom Bar */
+/* Floating Zoom Bar (Exact btn-toggle 120x40 pill) */
 .floating-zoom-bar {
   position: absolute;
-  bottom: 20px;
+  bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--dark-solid);
+  background: var(--bg-layer-active);
   border-radius: 9999px;
-  padding: 4px 8px;
+  height: 40px;
+  padding: 0 10px;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   z-index: 15;
 }
@@ -489,8 +496,8 @@ body {
   background: none;
   border: none;
   color: #FFFFFF;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 9999px;
   display: flex;
   align-items: center;
@@ -506,8 +513,8 @@ body {
 /* Status Bar */
 .canvas-status-footer {
   position: absolute;
-  bottom: 18px;
-  right: 76px;
+  bottom: 20px;
+  right: 80px;
   font-size: 11px;
   font-family: var(--font-mono);
   color: var(--text-muted);
@@ -515,11 +522,11 @@ body {
   pointer-events: none;
 }
 
-/* ---------------- Right Edge: Vertical Tool Rail ---------------- */
+/* ---------------- Right Edge: Tool Rail (Exact View options 40x40 buttons) ---------------- */
 .tool-rail {
   position: absolute;
-  right: 24px;
-  top: 12px;
+  right: 26px;
+  top: 16px;
   z-index: 30;
   display: flex;
   flex-direction: column;
@@ -527,10 +534,10 @@ body {
 }
 
 .rail-btn {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 9999px;
-  background: var(--dark-solid);
+  background: var(--bg-layer-active);
   color: #FFFFFF;
   border: none;
   display: flex;
@@ -542,45 +549,47 @@ body {
 }
 
 .rail-btn:hover {
-  background: var(--dark-hover);
+  background: #3B3E4F;
   transform: scale(1.05);
 }
 
 .rail-btn.active {
   background: #000000;
-  box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--dark-solid);
+  box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--bg-layer-active);
 }
 
 .hidden-rail-btn {
   display: none !important;
 }
 
-/* ---------------- Floating Popover Inspector (Flyout Panel) ---------------- */
+/* ---------------- Floating Popover Inspector (Exact Figma Frame 6: Width 400px, Padding 24px) ---------------- */
 .popover-inspector {
   position: absolute;
-  right: 72px;
-  top: 12px;
-  width: 340px;
-  max-height: calc(100vh - 80px);
+  right: 76px;
+  top: 16px;
+  width: 400px;
+  max-height: calc(100vh - 90px);
   overflow-y: auto;
   background: #FFFFFF;
   border-radius: 20px;
-  box-shadow: var(--card-shadow);
-  border: 1px solid var(--card-border);
-  padding: 22px 24px;
+  box-shadow: var(--shadow-popover);
+  border: none;
+  padding: 24px;
   z-index: 35;
   display: none;
 }
 
 .popover-inspector.open {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
   animation: popoverSlide 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes popoverSlide {
   from {
     opacity: 0;
-    transform: translateX(10px) scale(0.98);
+    transform: translateX(12px) scale(0.98);
   }
   to {
     opacity: 1;
@@ -589,11 +598,11 @@ body {
 }
 
 .popover-section-label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: capitalize;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
 }
 
 /* Shape Grid (7 columns) */
@@ -601,7 +610,6 @@ body {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 8px;
-  margin-bottom: 20px;
 }
 
 .shape-pill-btn {
@@ -624,9 +632,9 @@ body {
 }
 
 .shape-pill-btn.active {
-  border-color: var(--dark-solid);
+  border-color: var(--bg-layer-active);
   background: #F4F5F7;
-  box-shadow: 0 0 0 1px var(--dark-solid);
+  box-shadow: 0 0 0 1px var(--bg-layer-active);
 }
 
 .shape-pill-btn i,
@@ -639,12 +647,11 @@ body {
   justify-content: center;
 }
 
-/* Control Grid (2x2 Sliders) */
+/* Control Grid (Geometry controls with 24px spacing) */
 .control-grid-2x2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px 14px;
-  margin-bottom: 20px;
+  gap: 20px 16px;
 }
 
 .control-field {
@@ -667,15 +674,15 @@ body {
 
 .range-slider-input {
   flex: 1;
-  accent-color: var(--dark-solid);
+  accent-color: var(--bg-layer-active);
   height: 4px;
   cursor: pointer;
 }
 
 .number-pill-box {
-  width: 44px;
-  height: 26px;
-  border: 1px solid var(--dark-solid);
+  width: 46px;
+  height: 28px;
+  border: 1px solid var(--bg-layer-active);
   border-radius: 6px;
   text-align: center;
   font-size: 12px;
@@ -689,7 +696,7 @@ body {
 .control-row-bottom {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: 16px;
 }
 
 /* Segmented Pill for Stroke / Fill */
@@ -705,7 +712,7 @@ body {
   flex: 1;
   border: none;
   background: transparent;
-  padding: 5px 8px;
+  padding: 6px 8px;
   font-size: 12px;
   font-weight: 500;
   border-radius: 5px;
@@ -715,7 +722,7 @@ body {
 }
 
 .segmented-pill-btn.active {
-  background: var(--dark-solid);
+  background: var(--bg-layer-active);
   color: #FFFFFF;
   font-weight: 600;
 }
@@ -728,8 +735,8 @@ body {
 }
 
 .color-swatch-btn {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 6px;
   border: 1px solid var(--border-light);
   cursor: pointer;
@@ -742,8 +749,8 @@ body {
   position: absolute;
   top: -10px;
   left: -10px;
-  width: 50px;
-  height: 50px;
+  width: 60px;
+  height: 60px;
   opacity: 0;
   cursor: pointer;
 }
@@ -756,20 +763,13 @@ body {
   text-transform: uppercase;
 }
 
-/* ---------------- Additional Popover Panels (Pattern & Style) ---------------- */
-.panel-divider {
-  height: 1px;
-  background: var(--border-light);
-  margin: 16px 0;
-}
-
+/* ---------------- Additional Panels (Distribution & Style) ---------------- */
 .distribution-mode-pill {
   display: flex;
   background: #F0F2F5;
   border-radius: 8px;
   padding: 3px;
   gap: 2px;
-  margin-bottom: 16px;
 }
 
 .dist-pill-btn {
@@ -787,7 +787,7 @@ body {
 }
 
 .dist-pill-btn.active {
-  background: var(--dark-solid);
+  background: var(--bg-layer-active);
   color: #FFFFFF;
   font-weight: 600;
 }
@@ -797,7 +797,7 @@ body {
   background: #FFFFFF;
   border: 1px solid var(--border-light);
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: 9px 12px;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-main);
@@ -807,7 +807,6 @@ body {
   justify-content: center;
   gap: 6px;
   transition: all 0.15s ease;
-  margin-top: 14px;
 }
 
 .btn-action-wide:hover {
@@ -820,7 +819,6 @@ body {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
-  margin-bottom: 16px;
 }
 
 .palette-chip {
@@ -874,8 +872,8 @@ body {
 .toast {
   position: fixed;
   bottom: 24px;
-  left: 24px;
-  background: var(--dark-solid);
+  left: 26px;
+  background: var(--bg-layer-active);
   color: #FFFFFF;
   padding: 8px 16px;
   border-radius: 9999px;
@@ -915,7 +913,7 @@ body {
   border-radius: 16px;
   width: 540px;
   max-width: 90vw;
-  box-shadow: var(--card-shadow);
+  box-shadow: var(--shadow-popover);
   border: 1px solid var(--border-light);
   display: flex;
   flex-direction: column;
@@ -973,7 +971,7 @@ body {
 }
 
 .btn-primary {
-  background: var(--dark-solid);
+  background: var(--bg-layer-active);
   color: #FFFFFF;
   border: none;
   border-radius: 8px;
@@ -988,5 +986,5 @@ body {
 }
 
 .btn-primary:hover {
-  background: var(--dark-hover);
+  background: #3B3E4F;
 }
